@@ -1,0 +1,71 @@
+{
+  "rules": {
+    "games": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+    },
+    "rooms": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+    },
+    "teams": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "codeOk": {
+          ".validate": "(auth != null && auth.token.email == 'sgr.parmar@gmail.com') || newData.val() == root.child('secrets').child($uid).child('code').val()"
+        }
+      }
+    },
+    "control": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid"
+      }
+    },
+    "secrets": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+    },
+    "members": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      "$team": {
+        ".read": "auth != null",
+        "meta": {
+          ".write": "auth != null && auth.uid == $team"
+        },
+        "$m": {
+          ".write": "auth != null && auth.uid == $m",
+          "seat": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          }
+        }
+      }
+    },
+    "roles": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      "$m": {
+        ".read": "auth != null && auth.uid == $m"
+      }
+    },
+    "insiders": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+    },
+    "log": {
+      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      "$id": {
+        ".write": "auth != null && !data.exists() && newData.child('uid').val() == auth.uid"
+      }
+    }
+  }
+}

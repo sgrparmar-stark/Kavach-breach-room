@@ -1,0 +1,31 @@
+{
+  "name": "kavach-breach-room",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Kavach Breach Room: a live, facilitator-run cyber escape game for Cybersecurity Awareness Month.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.3",
+    "firebase": "^12.0.0",
+    "lucide-react": "^0.460.0",
+    "next": "^16.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-qr-code": "^2.0.15"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.6.4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Headphones, Scissors, Snowflake, Flame, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Headphones, Scissors, Snowflake, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { TeamEngine } from './engine';
 import { LockBody, DecisionBody } from './Locks';
 import { Shield, Html, MuteButton, QRBox, Check } from '@/components/ui';
-import { MODES, ASK_IT_MS, fmt, injectById, isLockNode, lockNumber, fiftyLabel, makeVerifyCode, gameIndex } from '@/lib/game';
+import { MODES, ASK_IT_MS, LOCK_COUNT, MAIN_STEPS, fmt, injectById, isLockNode, lockNumber, fiftyLabel, makeVerifyCode, gameIndex, stepsDone } from '@/lib/game';
 import { playUrl } from '@/lib/nav';
 import { getStore } from '@/lib/store';
 import { DemoStrip } from '@/components/DemoStrip';
@@ -40,29 +40,31 @@ export default function TeamApp({ gid }: { gid: string }) {
   );
 }
 
-/* ---------- header bar with clock, streak and sound ---------- */
+/* ---------- header: where you are, the clock, sound, and a progress track ---------- */
 function Bar({ e }: { e: TeamEngine }) {
   const P = e.P, n = e.node();
-  const locksDone = P.path.filter((x) => /^L/.test(x) && (x !== P.node || P.nodeDone)).length + (P.finished ? 0 : 0);
-  const step = P.finished ? 'Case closed' : n ? (n.type === 'decision' ? 'Decision' : n.id === 'X' ? 'Detour' : lockNumber(n) + ' of 4') : '';
+  const step = P.finished ? 'Case closed' : n ? (n.type === 'decision' || n.id === 'X' ? lockNumber(n) : lockNumber(n) + ' of ' + LOCK_COUNT) : '';
   const s = e.score(), freeze = e.freezeLeft();
+  const done = stepsDone(P.path, P.node || '', P.nodeDone, P.finished);
   const [popKey, setPopKey] = useState(0);
   const lastPop = useRef(0);
   useEffect(() => { if (e.pop && e.pop.at !== lastPop.current) { lastPop.current = e.pop.at; setPopKey((k) => k + 1); } });
   return (
     <header className="bar">
       <div className="bar-in">
-        <Shield filled={Math.min(4, locksDone)} className="hdr" />
         <div className="bar-mid">
           <div className="bar-step">{step}</div>
-          <div className="bar-team">{P.name}{P.streak >= 2 ? <span className="streak"><Flame size={14} aria-hidden /> {P.streak}</span> : null}</div>
+          <div className="bar-team">{P.name}</div>
         </div>
         <div className={'timer' + (s > e.M().target ? ' over' : '') + (freeze ? ' frozen' : '')} id="timer">
           {e.pop && popKey ? <span key={popKey} className="pop show" aria-hidden="true">{e.pop.text}</span> : null}
           <span className="t" id="t">{fmt(s)}</span>
-          <small>{freeze ? <><Snowflake size={12} aria-hidden /> frozen {Math.ceil(freeze / 1000)}s</> : 'Target ' + fmt(e.M().target)}</small>
+          {freeze ? <small><Snowflake size={12} aria-hidden /> frozen {Math.ceil(freeze / 1000)}s</small> : null}
         </div>
         <MuteButton />
+      </div>
+      <div className="track" aria-label={'Progress: ' + done + ' of ' + MAIN_STEPS.length + ' steps'}>
+        {MAIN_STEPS.map((id, i) => <i key={id} className={(i < done ? 'd' : '') + (id === P.node && !P.finished ? ' h' : '') + (id === 'D' ? ' dec' : '')} />)}
       </div>
     </header>
   );
@@ -73,7 +75,7 @@ function Banner({ e }: { e: TeamEngine }) {
   if (!m || m.seen) return null;
   return (
     <div className="banner" role="status">
-      <div className="bt"><b>MESSAGE FROM YOUR FACILITATOR</b>{m.text}</div>
+      <div className="bt"><b>FROM YOUR FACILITATOR</b>{m.text}</div>
       <button type="button" onClick={() => e.act('msgok')}>OK</button>
     </div>
   );
@@ -89,7 +91,7 @@ function FlashOverlay({ e }: { e: TeamEngine }) {
       last.current = f.at;
       setShow({ kind: f.kind, text: f.text, key: f.at });
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setShow(null), f.kind === 'breach' ? 1300 : 1100);
+      timer.current = setTimeout(() => setShow(null), f.kind === 'breach' ? 1100 : 950);
     }
   });
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -97,9 +99,9 @@ function FlashOverlay({ e }: { e: TeamEngine }) {
   return (
     <div key={show.key} className={'flash ' + show.kind} aria-live="assertive">
       <div className="flash-in">
-        {show.kind === 'breach' ? <ShieldAlert size={56} aria-hidden /> : show.kind === 'granted' ? <ShieldCheck size={56} aria-hidden /> : <Headphones size={52} aria-hidden />}
-        <b>{show.kind === 'breach' ? 'SECURITY BREACH' : show.kind === 'granted' ? 'ACCESS GRANTED' : 'LIFELINE'}</b>
-        <span>{show.text}</span>
+        {show.kind === 'breach' ? <ShieldAlert size={44} aria-hidden /> : show.kind === 'granted' ? <ShieldCheck size={44} aria-hidden /> : <Headphones size={40} aria-hidden />}
+        <b>{show.kind === 'breach' ? 'BREACH' : show.kind === 'granted' ? 'UNLOCKED' : 'LIFELINE'}</b>
+        {show.text ? <span>{show.text}</span> : null}
       </div>
     </div>
   );
@@ -122,17 +124,16 @@ function Lobby({ e }: { e: TeamEngine }) {
       <section>
         {head}
         <ul className="rules">
-          <li>4 locks and a big decision. Each one opens the next.</li>
-          <li>Target time: {fmt(m.target)}. A wrong answer adds {m.pen} seconds.</li>
-          <li>Two lifelines per game: <strong>Ask IT</strong> (a hint from the SOC and your clock frozen for 45 seconds) and <strong>50:50</strong>.</li>
-          <li>Your facilitator may throw surprises at you. Choose wisely.</li>
+          <li>{LOCK_COUNT} locks and one big decision. Fastest team wins.</li>
+          <li>Each wrong answer adds {m.pen} seconds.</li>
+          <li>One <strong>Ask IT</strong> (a hint, clock frozen for 45 seconds) and one <strong>50:50</strong> per game.</li>
         </ul>
         {open ? (
           <form onSubmit={(ev) => { ev.preventDefault(); e.register(name); }}>
             <label className="field" htmlFor="team">Team name</label>
             <input id="team" className="input" maxLength={30} autoComplete="off" placeholder="e.g. Floor 4 Firewalls" value={name} onChange={(ev) => setName(ev.target.value)} />
             <p className={'fb ' + e.fb.type} role="status">{e.fb.msg}</p>
-            <div className="row" style={{ marginTop: 4 }}><button className="btn btn-primary" type="submit" disabled={e.busy} data-a="register">Register our team</button><MuteButton className="inline" /></div>
+            <button className="btn btn-primary" type="submit" disabled={e.busy} data-a="register">Register our team</button>
           </form>
         ) : (
           <>
@@ -159,14 +160,15 @@ function Lobby({ e }: { e: TeamEngine }) {
           <p style={{ margin: '8px 0 0' }}><strong>{seats.length}</strong> joined{seats.length ? ': ' + seats.map((x) => x.seat).join(', ') : ''}</p>
         </div>
       ) : null}
-      <p style={{ marginTop: 16 }}>When your facilitator is ready, they’ll give you a <strong>4-digit launch code</strong>, or start your game from their console.</p>
-      <form onSubmit={(ev) => { ev.preventDefault(); e.tryCode(code); }}>
-        <label className="field" htmlFor="lc">Launch code</label>
-        <input id="lc" className="input codein" inputMode="numeric" maxLength={4} autoComplete="off" placeholder="0000" style={{ maxWidth: 180 }} value={code} onChange={(ev) => setCode(ev.target.value)} />
+      <form onSubmit={(ev) => { ev.preventDefault(); e.tryCode(code); }} style={{ marginTop: 18 }}>
+        <label className="field" htmlFor="lc">Launch code from your facilitator</label>
+        <div className="row">
+          <input id="lc" className="input codein" inputMode="numeric" maxLength={4} autoComplete="off" placeholder="0000" style={{ maxWidth: 160 }} value={code} onChange={(ev) => setCode(ev.target.value)} />
+          <button className="btn btn-primary" type="submit" disabled={e.busy} data-a="code">Start</button>
+        </div>
         <p className={'fb ' + e.fb.type} role="status">{e.fb.msg}</p>
-        <div className="row" style={{ marginTop: 4 }}><button className="btn btn-primary" type="submit" disabled={e.busy} data-a="code">Launch our game</button><MuteButton className="inline" /></div>
       </form>
-      <p className="small" style={{ marginTop: 22 }}>Keep this screen open. It starts by itself if your facilitator launches you.</p>
+      <p className="small">Keep this screen open. It also starts by itself if your facilitator launches you.</p>
     </section>
   );
 }
@@ -178,11 +180,11 @@ function Lifelines({ e }: { e: TeamEngine }) {
   const askUsed = !!P.askIt, fiftyUsed = !!P.fiftyUsed;
   return (
     <div className="lifelines" role="group" aria-label="Lifelines">
-      <button type="button" className="ll" disabled={!e.canAskIt()} onClick={() => e.askIt()} data-a="askit">
-        <Headphones size={22} aria-hidden /><span><b>Ask IT</b><small>{askUsed ? 'Used' : 'SOC hint · clock frozen 45s'}</small></span>
+      <button type="button" className={'ll' + (askUsed ? ' used' : '')} disabled={!e.canAskIt()} onClick={() => e.askIt()} data-a="askit" aria-label={askUsed ? 'Ask IT, used' : 'Ask IT: a hint and 45 seconds off the clock'}>
+        <Headphones size={18} aria-hidden /> Ask IT
       </button>
-      <button type="button" className="ll" disabled={!e.canFifty()} onClick={() => e.fifty()} data-a="fifty">
-        <Scissors size={22} aria-hidden /><span><b>50:50</b><small>{fiftyUsed ? 'Used' : fiftyLabel(n)}</small></span>
+      <button type="button" className={'ll' + (fiftyUsed ? ' used' : '')} disabled={!e.canFifty()} onClick={() => e.fifty()} data-a="fifty" aria-label={fiftyUsed ? '50:50, used' : '50:50: ' + fiftyLabel(n)}>
+        <Scissors size={18} aria-hidden /> 50:50
       </button>
     </div>
   );
@@ -191,12 +193,11 @@ function Lifelines({ e }: { e: TeamEngine }) {
 function SocMessage({ hint, at }: { hint: string; at: number }) {
   const left = Math.max(0, ASK_IT_MS - (getStore().now() - at));
   return (
-    <div className="soc" role="note" aria-label="Message from the Security Operations Centre">
+    <div className="soc" role="note" aria-label="Hint from the Security Operations Centre">
       <div className="soc-av" aria-hidden="true">SOC</div>
       <div className="soc-body">
-        <div className="soc-head"><b>Kavach SOC Desk</b><span className="soc-ch"># ask-it</span><time>{new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
-        <p>Hi team, SOC here. <Html html={hint} /></p>
-        <p className="soc-foot">{left > 0 ? <><Snowflake size={13} aria-hidden /> Your clock is frozen for {Math.ceil(left / 1000)} more seconds.</> : 'Your clock is running again.'}</p>
+        <p><Html html={hint} /></p>
+        <p className="soc-foot">{left > 0 ? <><Snowflake size={13} aria-hidden /> Clock frozen · {Math.ceil(left / 1000)}s</> : 'Clock running again'}</p>
       </div>
     </div>
   );
@@ -207,35 +208,33 @@ function Play({ e }: { e: TeamEngine }) {
   const P = e.P, L = e.node();
   const [confirmLeave, setConfirmLeave] = useState(false);
   if (!L || L.type === 'end') return null;
-  let title: string, body: ReactNode, deb: ReactNode = null;
+  let body: ReactNode, deb: ReactNode = null;
   if (L.type === 'decision') {
-    title = L.name;
-    body = <div className="decision-card"><span className="tag">Decision point</span><DecisionBody prompt={L.prompt} options={L.options} picked={P.cur.choice} onPick={(id) => e.act('dec', id)} action="decide" /></div>;
+    body = <div className="decision-card"><DecisionBody prompt={L.prompt} options={L.options} picked={P.cur.choice} onPick={(id) => e.act('dec', id)} action="decide" /></div>;
     if (P.cur.choice) deb = <div className="row"><button className="btn btn-primary" type="button" onClick={() => e.act('next')} data-a="next">Continue</button></div>;
   } else {
-    title = L.id === 'X' ? 'Detour: ' + L.name : lockNumber(L) + ': ' + L.name;
     const hk = P.hintNodes[L.id];
     body = (
       <>
         <LockBody L={L} e={e} done={P.nodeDone} />
         <p className={'fb ' + e.fb.type} role="status" aria-live="polite">{e.fb.msg}</p>
-        {hk === 'soc' && P.askIt ? <SocMessage hint={L.hint} at={P.askIt.at} /> : hk === 'free' ? <div className="hint"><strong>Hint from your facilitator:</strong> <Html html={L.hint} /></div> : null}
+        {hk === 'soc' && P.askIt ? <SocMessage hint={L.hint} at={P.askIt.at} /> : hk === 'free' ? <div className="hint"><strong>Hint:</strong> <Html html={L.hint} /></div> : null}
         <Lifelines e={e} />
       </>
     );
     if (P.nodeDone) {
       deb = (
         <div className="debrief" id="debrief">
-          <h3>{L.id === 'X' ? 'Detour cleared' : 'Lock open'}</h3>
+          <h3>{L.id === 'X' ? 'Detour cleared' : 'Unlocked'}</h3>
           <p><Html html={L.debrief} /></p>
-          <button className="btn btn-primary" type="button" autoFocus onClick={() => e.act('next')} data-a="next">{L.next === 'END' ? 'Close the case' : 'Keep going'}</button>
+          <button className="btn btn-primary" type="button" autoFocus onClick={() => e.act('next')} data-a="next">{L.next === 'END' ? 'Close the case' : L.next === 'D' ? 'Continue' : 'Next lock'}</button>
         </div>
       );
     }
   }
   return (
     <>
-      <section className="lock"><h2>{title}</h2>{body}{deb}</section>
+      <section className="lock"><h2>{L.name}</h2>{body}{deb}</section>
       <p className="foot">
         {confirmLeave ? (
           <><span>Lose this team’s progress on this phone? </span><button className="linkish danger" type="button" onClick={() => e.act('leave')}>Yes, leave</button><button className="linkish" type="button" onClick={() => setConfirmLeave(false)}>Cancel</button></>
@@ -252,11 +251,11 @@ function InjectCard({ e }: { e: TeamEngine }) {
   return (
     <section className="lock">
       <div className="inject-card">
-        <span className="tag">Incoming · from your facilitator</span>
+        <span className="tag">Surprise event</span>
         <h2 style={{ margin: '4px 0 8px' }}>{I.name}</h2>
         <DecisionBody prompt={I.prompt} options={I.options} picked={picked} onPick={(id) => e.act('inj', id)} action="inj" />
         {picked ? <div className="row"><button className="btn btn-primary" type="button" onClick={() => e.act('injdone')} data-a="injdone">Back to the case</button></div>
-          : <p className="small" style={{ margin: '10px 0 0' }}>Answer this before you carry on. The clock is running.</p>}
+          : <p className="small" style={{ margin: '10px 0 0' }}>Answer to carry on. The clock is running.</p>}
       </div>
     </section>
   );
@@ -266,6 +265,7 @@ function InjectCard({ e }: { e: TeamEngine }) {
 function Done({ e }: { e: TeamEngine }) {
   const P = e.P, m = e.M(), oc = P.outcome || { key: 'full', label: '' };
   const final = P.finalBase + (e.ctl.adj || 0);
+  const used = [P.askIt ? 'Ask IT' : '', P.fiftyUsed ? '50:50' : ''].filter(Boolean).join(' and ');
   return (
     <section className="done">
       <Shield filled={4} className="big" reveal />
@@ -274,10 +274,8 @@ function Done({ e }: { e: TeamEngine }) {
       <p className="team">{P.name}</p>
       <p className="final">{fmt(final)}</p>
       <p className="muted">
-        Clock {fmt(Math.floor(e.rawMs() / 1000))} · {P.wrong} wrong · {P.pen}s penalties{e.ctl.adj ? ' · ' + (e.ctl.adj > 0 ? '+' : '') + e.ctl.adj + 's from facilitator' : ''}
-        {P.bestStreak >= 2 ? ' · best streak ' + P.bestStreak : ''}
+        {P.wrong} wrong · {P.pen}s added{e.ctl.adj ? ' · ' + (e.ctl.adj > 0 ? '+' : '') + e.ctl.adj + 's adjustment' : ''} · {used ? used + ' used' : 'no lifelines used'}
       </p>
-      <p className="lifeline-sum">Lifelines used: {[P.askIt ? 'Ask IT' : '', P.fiftyUsed ? '50:50' : ''].filter(Boolean).join(', ') || 'none'}</p>
       <Vote e={e} />
       {P.choices.length ? (
         <>
@@ -285,11 +283,9 @@ function Done({ e }: { e: TeamEngine }) {
           <ul className="choicelog">{P.choices.map((c, i) => <li key={i}><span className={'q-' + c.q}>{c.q === 'best' ? 'Strong' : c.q === 'ok' ? 'Could be better' : 'Risky'}:</span> <Html html={c.label} /></li>)}</ul>
         </>
       ) : null}
-      <p style={{ marginTop: 14 }}><strong>Your result is saved.</strong> Your facilitator will announce the winners.</p>
-      <p className="small" style={{ margin: '6px 0 0' }}>Backup verification code</p>
-      <div className="vcode">{makeVerifyCode(P.name, final, gameIndex(e.gid), P.mode === 'x')}</div>
       <h2 className="sub-h">What your team practised</h2>
       <ol className="lessons">{e.S.lessons.map((l) => <li key={l}>{l}</li>)}</ol>
+      <p className="small saved">Result saved. Your facilitator will announce the winners. Backup code <span className="vcode-inline">{makeVerifyCode(P.name, final, gameIndex(e.gid), P.mode === 'x')}</span></p>
     </section>
   );
 }

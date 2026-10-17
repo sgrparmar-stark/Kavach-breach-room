@@ -7,7 +7,7 @@ type P<L> = { L: L; e: TeamEngine; done: boolean };
 const TONES = new Set(['ok', 'bad', 'info']);
 
 export function SpotView({ L, e, done }: P<SpotLock>) {
-  const c = e.P.cur, pen = e.M().pen;
+  const c = e.P.cur;
   const need = L.items.filter((x) => x.flag).length;
   const item = (x: SpotLock['items'][number]) => {
     const found = c.sel.includes(x.id) || (done && !!x.flag);
@@ -23,8 +23,8 @@ export function SpotView({ L, e, done }: P<SpotLock>) {
   const heads = L.items.filter((x) => x.head), body = L.items.filter((x) => !x.head);
   return (
     <>
-      <p className="task">{L.task} Tapping a normal part adds {pen} seconds.</p>
-      <p className="count"><strong>{done ? need : c.sel.length} of {need}</strong> warning signs found</p>
+      <p className="task">{L.task}</p>
+      <p className="count"><strong>{done ? need : c.sel.length} of {need}</strong> found</p>
       <div className={'frame ' + (L.frame === 'note' ? 'note-frame' : L.frame)}>
         {L.frame === 'chat' ? <div className="frame-head"><div className="chat-name">{L.chatName}</div><div className="sub">{L.chatSub}</div></div>
           : L.frame === 'code' ? <div className="frame-head">{L.fileName}</div>
@@ -104,7 +104,7 @@ export function ChoiceView({ L, e, done }: P<ChoiceLock>) {
   const c = e.P.cur;
   return (
     <>
-      <p className="task">{L.task} A wrong choice adds {e.M().pen} seconds.</p>
+      <p className="task">{L.task}</p>
       <div className="choices">
         {L.options.map((o) => {
           const w = c.elim.includes(o.id), ruled = c.fifty.includes(o.id);

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Eye, Flame, Headphones, Scissors, Trophy } from 'lucide-react';
-import { gameById, graph, fmt, codeDisplay, isLockNode, type NodeId, type GameNode } from '@/lib/game';
+import { ArrowLeft, ChevronLeft, ChevronRight, Eye, Trophy } from 'lucide-react';
+import { gameById, graph, fmt, codeDisplay, isLockNode, MAIN_STEPS, REVEAL_ORDER, type GameNode } from '@/lib/game';
 import { QRBox, Html } from '@/components/ui';
 import { playUrl } from '@/lib/nav';
 import { useNow } from '@/lib/hooks';
@@ -32,7 +32,7 @@ function Lobby({ D, gid, base }: { D: Data; gid: string; base: string }) {
   return (
     <>
       <h1>{s?.title}</h1>
-      <p className="sub">Kavach Breach Room · {g.state === 'open' ? 'Scan or type the room code to register your team' : g.state === 'closed' || !g.state ? 'Registration opens soon' : GS_LABEL[g.state]}</p>
+      <p className="sub">{g.state === 'open' ? 'Scan the QR code, or enter the room code, to register your team' : g.state === 'closed' || !g.state ? 'Registration opens soon' : GS_LABEL[g.state]}</p>
       <div className="lobby">
         {url ? <QRBox value={url} size={420} label={'QR code for ' + s?.title} /> : <div className="qrbox" style={{ padding: 40, lineHeight: 1.4, color: '#000', maxWidth: 420 }}>{demo ? 'Demo mode: teams join with the room code in another tab. Once hosted, the QR code shows here.' : 'Host the game to show its QR code here.'}</div>}
         <div className="joined">
@@ -54,7 +54,6 @@ function Race({ D, gid }: { D: Data; gid: string }) {
   const moved: Record<string, boolean> = {};
   list.forEach((t, i) => { const p = prev.current[t.uid]; if (p !== undefined && i < p) moved[t.uid] = true; });
   useEffect(() => { const m: Record<string, number> = {}; list.forEach((t, i) => { m[t.uid] = i; }); prev.current = m; });
-  const steps: NodeId[] = ['L1', 'L2', 'D', 'L3', 'L4'];
   return (
     <>
       <h1>Live race</h1>
@@ -68,17 +67,11 @@ function Race({ D, gid }: { D: Data; gid: string }) {
                 <span className="rk">{i + 1}</span>
                 <span className="nm">{t.name}{gid === 'all' ? <small>{gameById(t.game)?.title}</small> : null}</span>
                 <span className="prog" aria-label={'Progress ' + (p.solved || 0) + ' steps'}>
-                  {steps.map((sId) => {
+                  {MAIN_STEPS.map((sId) => {
                     const done = path.includes(sId) && (p.node !== sId || st === 'finished' || (p.solved || 0) > path.indexOf(sId));
                     const here = p.node === sId && st !== 'finished' && st !== 'stopped';
                     return <i key={sId} className={(done ? 'd' : '') + (here ? ' h' : '')} title={graph(t.game)[sId].label} />;
                   })}
-                  {path.includes('X') ? <em title="Took the detour">detour</em> : null}
-                </span>
-                <span className="icons">
-                  {p.streak >= 2 ? <span className="fl"><Flame size={18} aria-hidden />{p.streak}</span> : null}
-                  <Headphones size={18} aria-label={p.askIt ? 'Ask IT used' : 'Ask IT available'} className={p.askIt ? 'used' : ''} />
-                  <Scissors size={18} aria-label={p.fifty ? '50:50 used' : '50:50 available'} className={p.fifty ? 'used' : ''} />
                 </span>
                 <span className="tm">{st === 'waiting' || st === 'new' ? '—' : st === 'stopped' ? 'stopped' : fmt(liveTime(D, t, now))}</span>
                 <span className={'stt ' + st}>{st === 'finished' ? (p.outcome || 'Finished') : ST_LABEL[st] || st}</span>
@@ -155,7 +148,7 @@ export function AnswerKey({ n }: { n: GameNode }): ReactNode {
 
 function Reveal({ gid }: { gid: string }) {
   const gr = graph(gid), s = gameById(gid);
-  const slides: NodeId[] = ['L1', 'L2', 'D', 'X', 'L3', 'L4'];
+  const slides = REVEAL_ORDER;
   const [i, setI] = useState(0);
   const [shown, setShown] = useState(false);
   const n = gr[slides[i]];

@@ -1,6 +1,6 @@
-# Kavach Breach Room 2.0
+# Kavach Breach Room 3.0
 
-A live, facilitator-run cyber escape game. Teams of 4 or 5 join on a phone by scanning a QR code or typing a room code. They work through 4 locks, a decision and the occasional surprise you send them, while you run everything from a host dashboard.
+A live, facilitator-run cyber escape game. Teams of 4 or 5 join on a phone by scanning a QR code or typing a room code. They work through 6 locks, one big decision and the occasional surprise you send them, while you run everything from a host dashboard.
 
 **Built with:** Next.js (App Router) · React · TypeScript · Firebase Realtime Database and Authentication (modular SDK) · react-qr-code · lucide-react · canvas-confetti · Web Audio sound effects. It deploys to Vercel.
 
@@ -9,9 +9,9 @@ A live, facilitator-run cyber escape game. Teams of 4 or 5 join on a phone by sc
 | For teams (phones, `/play`) | For you (laptop, `/host`) |
 |---|---|
 | Join by QR code or 4-digit room code | Open, pause or end each game; Standard or Expert mode |
-| 4 locks, a decision, and a detour after a poor decision | Launch teams with a code, or launch everyone at once |
+| 6 locks, a decision after lock 3, and a detour after a poor decision | Launch teams with a code, or launch everyone at once |
 | **Lifelines:** **Ask IT** (a SOC hint in a chat-style message, plus the team's clock frozen for 45 seconds) and **50:50** (removes or reveals half the options). Each can be used once per game | Per team: pause, adjust time, free hint, message, surprise event, move them anywhere in the game tree, end, remove |
-| "Security breach" and "Access granted" animations, streaks, sound effects with a mute button, confetti at the end | Big-screen views: **Lobby** (QR code, room code, teams joining), **Live race**, **Answer reveal**, **Leaderboard** |
+| "Breach" and "Unlocked" animations, a progress bar, sound effects with a mute button, confetti at the end | Big-screen views: **Lobby + QR**, **Live race**, **Answers** (step-by-step answer reveal), **Leaderboard** |
 | Insider round: one teammate secretly works against the team, and the team votes at the end | Activity log of everything, plus CSV downloads of the results and the log |
 
 The 8 games:
@@ -64,10 +64,10 @@ To deploy from Terminal instead, run `npx vercel --prod` and add the environment
 ## 4. Test before the day
 
 1. Open `https://your-site/host` and sign in.
-2. Open a game, then **Open registration** and **Lobby: QR + room code**.
+2. Open a game, then **Open registration**, then **Big screen → Lobby + QR**.
 3. Scan the QR code with a phone on mobile data, register, type the launch code and play a lock. Try Ask IT and 50:50.
-4. On the host, try **Live race**, **Answer reveal**, a surprise event and a pause.
-5. Go to **Setup & QR → Reset event**. Room codes stay the same, so printed cards keep working.
+4. On the host, try **Live race**, **Answers**, a surprise event and a pause.
+5. Go to **Setup → Reset event**. Room codes stay the same, so printed cards keep working.
 
 To test several teams on one laptop, use separate browser windows: one normal and one or more private. Each window is a different team.
 
@@ -78,10 +78,10 @@ To test several teams on one laptop, use separate browser windows: one normal an
 | Doors open | Open registration. Project the **Lobby** (QR code plus room code). | Scan, or type the room code, then enter a team name. |
 | Start | Read each team its code, or press **Launch all waiting**. | Clock starts at Lock 1. |
 | During play | Project the **Live race**. Send one surprise event mid-game. Pause or hint if a team is stuck. | Locks, the decision, lifelines, surprises. |
-| End | **End game** when time's up. Project **Answer reveal**, then the **Leaderboard**. | Final time, outcome and decisions. |
+| End | **End game** when time's up. Project **Answers**, then the **Leaderboard**. | Final time, outcome and decisions. |
 | After | Download the results and log as CSV. | — |
 
-**Scoring:** final time = clock time, plus 20 seconds per wrong answer (30 in Expert), plus time for risky decisions and surprise events, plus or minus your adjustments. While Ask IT is active, the clock doesn't count. Lowest time wins, and teams stopped before closing the case rank below finishers.
+**Scoring:** final time = clock time, plus 20 seconds per wrong answer (30 in Expert), plus time for risky decisions and surprise events, plus or minus your adjustments. While Ask IT is active, the clock doesn't count. Lowest time wins, and teams stopped before closing the case rank below finishers. A game takes most teams 15 to 20 minutes (the clock turns red after 18 minutes in Standard, 15 in Expert).
 
 ## Security notes
 
@@ -91,6 +91,13 @@ To test several teams on one laptop, use separate browser windows: one normal an
 - **Headers:** the site sends standard security headers and asks search engines not to index it.
 - **Firebase key:** the web config key isn't a secret; the rules protect the data.
 - **Type-check setting:** `next.config.mjs` sets `typescript.ignoreBuildErrors` so a type-only warning can't block a deploy. Run `npm run typecheck` to check types yourself.
+
+## Updating the game later
+
+1. Change the files (most game text is in `data/scenarios.ts`).
+2. Test on your Mac with `npm run dev`.
+3. Upload the changed files to the same GitHub repository (drag them onto **Add file → Upload files**, keeping the folder structure). Vercel rebuilds by itself.
+4. If the change affects the game structure, go to **Setup → Reset event** before the next session.
 
 ## Project map
 

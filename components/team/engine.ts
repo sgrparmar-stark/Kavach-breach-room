@@ -257,7 +257,7 @@ export class TeamEngine {
     const P = this.P;
     P.nodeDone = true;
     if (P.cur.wrong === 0) { P.streak++; P.bestStreak = Math.max(P.bestStreak, P.streak); } else P.streak = 0;
-    this.flash = { kind: 'granted', text: P.streak >= 2 ? P.streak + ' clean solves in a row' : 'Access granted', at: Date.now() };
+    this.flash = { kind: 'granted', text: P.streak >= 2 ? P.streak + ' in a row' : '', at: Date.now() };
     play(P.streak >= 2 ? 'streak' : 'correct');
     this.setFb(); this.save(); this.sync(true);
     const n = this.node(); void log('solved', (n ? n.label : '') + (P.cur.wrong === 0 ? ' · first try' : ''), this.who());
@@ -303,7 +303,7 @@ export class TeamEngine {
     const P = this.P, n = this.node() as GameNode;
     P.askIt = { node: n.id, at: this.now() };
     P.hintNodes[n.id] = 'soc';
-    this.flash = { kind: 'lifeline', text: 'Clock frozen for 45 seconds', at: Date.now() };
+    this.flash = { kind: 'lifeline', text: 'Ask IT · clock frozen 45s', at: Date.now() };
     play('lifeline');
     void log('askit', n.label, this.who());
     this.save(); this.sync(true); this.emit();

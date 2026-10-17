@@ -3,8 +3,8 @@ import { SCENARIOS, INJECTS, type Scenario, type Lock, type Decision, type Injec
 /* ---------- modes and lifelines ---------- */
 export type ModeKey = 'std' | 'x';
 export const MODES: Record<ModeKey, { pen: number; target: number; label: string }> = {
-  std: { pen: 20, target: 12 * 60, label: 'Standard' },
-  x: { pen: 30, target: 10 * 60, label: 'Expert' },
+  std: { pen: 20, target: 18 * 60, label: 'Standard' },
+  x: { pen: 30, target: 15 * 60, label: 'Expert' },
 };
 /** Ask IT freezes the team's clock for this long. */
 export const ASK_IT_MS = 45_000;
@@ -23,8 +23,14 @@ export function injectById(id: string | null | undefined): Inject | null {
 }
 
 /* ---------- the game tree ---------- */
-export type NodeId = 'L1' | 'L2' | 'D' | 'X' | 'L3' | 'L4' | 'END';
-export const NODE_ORDER: NodeId[] = ['L1', 'L2', 'D', 'X', 'L3', 'L4', 'END'];
+/* Six locks with one decision after lock 3. A poor decision sends the team through a detour (X) first. */
+export type NodeId = 'L1' | 'L2' | 'L3' | 'D' | 'X' | 'L4' | 'L5' | 'L6' | 'END';
+export const NODE_ORDER: NodeId[] = ['L1', 'L2', 'L3', 'D', 'X', 'L4', 'L5', 'L6', 'END'];
+export const LOCK_COUNT = 6;
+/** The main path, used for progress bars (the detour is extra). */
+export const MAIN_STEPS: NodeId[] = ['L1', 'L2', 'L3', 'D', 'L4', 'L5', 'L6'];
+/** Answer reveal order on the big screen. */
+export const REVEAL_ORDER: NodeId[] = ['L1', 'L2', 'L3', 'D', 'X', 'L4', 'L5', 'L6'];
 export type LockNode = Lock & { id: NodeId; label: string; next: NodeId };
 export type DecisionNode = Decision & { id: 'D'; label: string };
 export type EndNode = { type: 'end'; id: 'END'; label: string };
@@ -37,13 +43,17 @@ export function graph(gid: string): Record<NodeId, GameNode> {
   const s = gameById(gid);
   if (!s) throw new Error('Unknown game ' + gid);
   const L = s.locks;
+  if (L.length !== LOCK_COUNT) throw new Error(s.title + ' needs ' + LOCK_COUNT + ' locks');
+  const lock = (i: number, id: NodeId, next: NodeId): LockNode => ({ ...L[i], id, next, label: i + 1 + ' · ' + L[i].name });
   const g: Record<NodeId, GameNode> = {
-    L1: { ...L[0], id: 'L1', next: 'L2', label: '1 · ' + L[0].name },
-    L2: { ...L[1], id: 'L2', next: 'D', label: '2 · ' + L[1].name },
+    L1: lock(0, 'L1', 'L2'),
+    L2: lock(1, 'L2', 'L3'),
+    L3: lock(2, 'L3', 'D'),
     D: { ...s.decision, id: 'D', label: 'Decision · ' + s.decision.name },
-    X: { ...s.detour, id: 'X', next: 'L3', label: 'Detour · ' + s.detour.name },
-    L3: { ...L[2], id: 'L3', next: 'L4', label: '3 · ' + L[2].name },
-    L4: { ...L[3], id: 'L4', next: 'END', label: '4 · ' + L[3].name },
+    X: { ...s.detour, id: 'X', next: 'L4', label: 'Detour · ' + s.detour.name },
+    L4: lock(3, 'L4', 'L5'),
+    L5: lock(4, 'L5', 'L6'),
+    L6: lock(5, 'L6', 'END'),
     END: { type: 'end', id: 'END', label: 'Case closed' },
   };
   GRAPHS[gid] = g;
@@ -54,12 +64,17 @@ export function isLockNode(n: GameNode | undefined | null): n is LockNode {
 }
 export function nextOf(gid: string, nodeId: NodeId, choiceQ?: Quality): NodeId {
   const n = graph(gid)[nodeId];
-  if (n.type === 'decision') return choiceQ === 'poor' ? 'X' : 'L3';
+  if (n.type === 'decision') return choiceQ === 'poor' ? 'X' : 'L4';
   if (n.type === 'end') return 'END';
   return n.next;
 }
 export function lockNumber(n: GameNode): string {
-  return n.id === 'X' ? 'Detour' : n.id === 'D' ? 'Decision' : 'Lock ' + n.label.charAt(0);
+  return n.id === 'X' ? 'Detour' : n.id === 'D' ? 'Decision' : n.id === 'END' ? 'Case closed' : 'Lock ' + n.id.slice(1);
+}
+/** Steps of the main path a team has completed (0 to MAIN_STEPS.length). */
+export function stepsDone(path: string[] | undefined, node: string | undefined, nodeDone: boolean, finished: boolean): number {
+  if (finished) return MAIN_STEPS.length;
+  return MAIN_STEPS.filter((s) => (path || []).includes(s) && (s !== node || nodeDone)).length;
 }
 
 /* ---------- outcomes ---------- */

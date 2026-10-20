@@ -14,14 +14,13 @@ const MISSION = [
   'Don’t get caught. At the end, your team votes on who the Insider was.',
 ];
 
-export default function MemberApp({ gid, team }: { gid: string; team: string }) {
+export default function MemberApp({ team }: { team: string }) {
   const [uid, setUid] = useState<string | null>(null);
   const [M, setM] = useState<Json>({});
   const [role, setRole] = useState<Json>(null);
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const s = gameById(gid);
 
   useEffect(() => {
     const store = getStore();
@@ -40,6 +39,8 @@ export default function MemberApp({ gid, team }: { gid: string; team: string }) 
   const taken: Record<string, string> = {};
   Object.keys(M).forEach((k) => { if (k !== 'meta' && M[k] && M[k].seat) taken[M[k].seat] = k; });
   const meta = M.meta || {};
+  const gid: string = meta.game || '';
+  const s = gameById(gid);
 
   const pick = (n: string) => {
     if (mine || busy || !uid) return;

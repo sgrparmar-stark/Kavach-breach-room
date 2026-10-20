@@ -2,14 +2,14 @@ import { SCENARIOS, INJECTS, type Scenario, type Lock, type Decision, type Injec
 
 /* ---------- modes and lifelines ---------- */
 export type ModeKey = 'std' | 'x';
-export const MODES: Record<ModeKey, { pen: number; target: number; label: string }> = {
-  std: { pen: 20, target: 18 * 60, label: 'Standard' },
-  x: { pen: 30, target: 15 * 60, label: 'Expert' },
+/** pen: the first wrong-answer penalty in seconds (penalties then rise; see lib/scoring.ts). */
+export const MODES: Record<ModeKey, { pen: number; label: string }> = {
+  std: { pen: 20, label: 'Standard' },
+  x: { pen: 30, label: 'Expert' },
 };
-/** Ask IT freezes the team's clock for this long. */
-export const ASK_IT_MS = 45_000;
 /** Correct / wrong Insider vote. */
 export const INSIDER_BONUS = 60;
+export const TRACKS: Record<string, string> = { core: 'Everyone', dev: 'Developers', lead: 'Leadership' };
 
 /* ---------- lookups ---------- */
 export function gameById(id: string | null | undefined): Scenario | null {
@@ -167,9 +167,10 @@ export function readVerifyCode(team: string, code: string): { secs: number; sidx
 /* ---------- activity log labels ---------- */
 export const LOG_TEXT: Record<string, string> = {
   joined: 'Registered', code_ok: 'Launched with code', code_fail: 'Wrong launch code', started: 'Clock started', solved: 'Solved', wrong: 'Wrong answer',
-  askit: 'Lifeline: Ask IT', fifty: 'Lifeline: 50:50', decision: 'Decision', inject_answer: 'Answered surprise event', finished: 'Finished', stopped: 'Stopped',
+  askit: 'Lifeline: Ask Security team', help: 'Asked for the Security team', help_withdrawn: 'Security request withdrawn',
+  fac_help_person: 'Security team member sent', fac_help_phone: 'Security hint sent to phone', fac_help_no: 'Security team not available', fifty: 'Lifeline: 50:50', decision: 'Decision', inject_answer: 'Answered surprise event', finished: 'Finished', stopped: 'Stopped',
   fac_launch: 'Facilitator launched', fac_pause: 'Facilitator paused', fac_resume: 'Facilitator resumed', fac_adj: 'Time adjusted', fac_hint: 'Free hint sent',
   fac_msg: 'Message sent', fac_inject: 'Surprise event sent', fac_jump: 'Moved in the tree', fac_end: 'Ended by facilitator', fac_remove: 'Removed', fac_code: 'Launch code issued',
   game_state: 'Game state', game_mode: 'Game setting', room: 'Room code', reset: 'Event reset', member_join: 'Teammate joined', roles_dealt: 'Secret roles dealt',
-  vote: 'Insider vote', reveal: 'Insider revealed',
+  vote: 'Insider vote', reveal: 'Insider revealed', assign: 'Game assigned', registration: 'Registration', session: 'New session', time: 'Out of time',
 };

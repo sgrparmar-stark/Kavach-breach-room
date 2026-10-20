@@ -1,24 +1,29 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, ChevronRight, Copy, Download, Printer, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Copy, Download, Printer, Shuffle, Play, Archive } from 'lucide-react';
 import { SCENARIOS, INJECTS } from '@/data/scenarios';
-import { MODES, LOG_TEXT, LOCK_COUNT, fmt, clock, gameById, graph, injectById, lockNumber, type NodeId } from '@/lib/game';
+import { MODES, LOG_TEXT, LOCK_COUNT, TRACKS, fmt, clock, gameById, graph, injectById, lockNumber, type NodeId } from '@/lib/game';
+import { LIMIT_S, DEFAULT_PAR, HINT_S, LIFELINE_S } from '@/lib/scoring';
 import { getStore, setWriteErrorHandler, lsGet, lsSet, SS } from '@/lib/store';
 import { baseUrl, go, setBaseUrl, playUrl } from '@/lib/nav';
 import { useNow } from '@/lib/hooks';
 import { Shield, Pill, QRBox, Html } from '@/components/ui';
 import { DemoStrip } from '@/components/DemoStrip';
+import { ReportView } from '@/components/Report';
 import Tree from './Tree';
 import Projector, { Board, type ProjKind } from './Projector';
+import History from './History';
+import HelpDock from './HelpDock';
 import {
-  useConsoleData, G, teamsOf, prog, ctlOf, tStatus, liveTime, counts, seatsOf, logRows, GS_LABEL, ST_LABEL,
-  setGameState, setMode, setInsider, newRoomCode, startAll, teamCmd, broadcast, injectAll, resetEvent, dealTeam, dealRoles,
-  revealInsider, revealAll, resultsCsv, logCsv, downloadText, copyText, type Data, type Team, type TeamCmd,
+  useConsoleData, G, teamList, teamsOf, lobbyTeams, resultOf, resultsOf, counts, ctlOf, seatsOf, logRows, reportOf, parOf, GS_LABEL, ST_LABEL,
+  setRegistration, setGameState, setMode, setInsider, setPar, assignTeam, autoAssign, startAll, teamCmd, broadcast, injectAll, dealTeam, dealRoles,
+  revealInsider, revealAll, newSession, resultsCsv, logCsv, downloadText, copyText, type Data, type Team, type TeamCmd,
 } from './data';
 
-type Tab = 'live' | 'board' | 'log' | 'setup';
+type Tab = 'live' | 'board' | 'history' | 'log' | 'setup';
 type SetProj = (p: { kind: ProjKind; gid: string } | null) => void;
-const TABS: [Tab, string][] = [['live', 'Games'], ['board', 'Results'], ['log', 'Log'], ['setup', 'Setup']];
+const TABS: [Tab, string][] = [['live', 'Games'], ['board', 'Results'], ['history', 'History'], ['log', 'Log'], ['setup', 'Setup']];
+const SECTIONS: { track: string; label: string }[] = [{ track: 'core', label: 'Everyone' }, { track: 'dev', label: 'Developer round' }, { track: 'lead', label: 'Leadership round' }];
 
 export default function Console({ onSignOut }: { onSignOut: () => void }) {
   const D = useConsoleData();
@@ -51,7 +56,7 @@ export default function Console({ onSignOut }: { onSignOut: () => void }) {
     setWriteErrorHandler((e) => {
       const msg = String((e as { code?: string; message?: string })?.code || (e as Error)?.message || '');
       setWriteErr(/permission|denied/i.test(msg)
-        ? 'The database refused a change. Check that the rules are published and that FACILITATOR_EMAIL in them is exactly the email you signed in with.'
+        ? 'The database refused a change. Check that the latest rules are published and that FACILITATOR_EMAIL in them is exactly the email you signed in with.'
         : 'Couldn’t reach the database. Check the internet connection.');
     });
     const off = store.onConnected ? store.onConnected(setOnline) : () => undefined;
@@ -85,88 +90,146 @@ export default function Console({ onSignOut }: { onSignOut: () => void }) {
       {store.mode === 'demo' && !store.persistent ? <div className="errbar" role="status"><strong>This preview blocks browser storage,</strong> so other tabs can’t see this dashboard’s data. Open it in a normal browser window to test with several tabs.</div> : null}
       <div className="cwrap one">
         <div className="ctabs" role="tablist">
-          {TABS.map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} data-a="tab" data-v={k}>{l}</button>
-          ))}
+          {TABS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} data-a="tab" data-v={k}>{l}</button>)}
         </div>
-        {tab === 'live' ? (sel === 'all' ? <Overview D={D} setSel={setSel} setProj={setProj} confirm={confirm} setConfirm={setConfirm} say={say} />
+        {tab === 'live' ? (sel === 'all'
+          ? <Overview D={D} now={now} base={base} setSel={setSel} setProj={setProj} confirm={confirm} setConfirm={setConfirm} say={say} openTeam={(u) => { setTeam(u); setPickNode(null); }} />
           : <GameView D={D} gid={sel} now={now} say={say} setProj={setProj} confirm={confirm} setConfirm={setConfirm} openTeam={(u) => { setTeam(u); setPickNode(null); }} selTeam={team} />)
-          : tab === 'board' ? <BoardTab D={D} gid={boardGame} setGid={setBoardGame} setProj={setProj} say={say} />
-          : tab === 'log' ? <LogTab D={D} filter={logFilter} setFilter={setLogFilter} say={say} />
-          : <SetupTab D={D} base={base} setBase={(b) => { setBaseRaw(b); lsSet('kbr-base', b); say('Address saved'); }} setProj={setProj} confirm={confirm} setConfirm={setConfirm} say={say} />}
+          : tab === 'board' ? <ResultsTab D={D} now={now} gid={boardGame} setGid={setBoardGame} setProj={setProj} say={say} />
+          : tab === 'history' ? <History D={D} now={now} say={say} />
+          : tab === 'log' ? <LogTab D={D} filter={logFilter} setFilter={setLogFilter} />
+          : <SetupTab D={D} now={now} base={base} setBase={(b) => { setBaseRaw(b); lsSet('kbr-base', b); say('Address saved'); }} setProj={setProj} confirm={confirm} setConfirm={setConfirm} say={say} />}
       </div>
       {team && D.teams[team] ? <Drawer D={D} uid={team} now={now} pickNode={pickNode} setPickNode={setPickNode} confirm={confirm} setConfirm={setConfirm} say={say} onClose={() => { setTeam(null); setPickNode(null); }} /> : null}
       {proj ? <Projector D={D} kind={proj.kind} gid={proj.gid} base={base} onClose={() => setProj(null)} /> : null}
+      <HelpDock D={D} now={now} projecting={!!proj} say={say} openTeam={(u) => { setProj(null); setTeam(u); setPickNode(null); }} />
       <div id="print">
-        {base ? SCENARIOS.map((s, i) => {
-          const g = G(D, s.id);
-          return g.room ? (
-            <div key={s.id} className="pcard">
-              <div className="pk">KAVACH BREACH ROOM · GAME {i + 1}</div><h2>{s.title}</h2>
-              <QRBox value={playUrl({ room: g.room })} size={240} />
-              <p>Scan with your phone, or go to <b>{base.replace(/^https?:\/\//, '')}</b> and enter room code <b>{g.room}</b></p>
-            </div>
-          ) : null;
-        }) : null}
+        {base ? (
+          <div className="pcard">
+            <div className="pk">KAVACH BREACH ROOM</div><h2>Scan to join</h2>
+            <QRBox value={playUrl()} size={260} />
+            <p>Scan with your phone, or go to <b>{base.replace(/^https?:\/\//, '').replace(/\/$/, '')}/play</b>, then register your team.</p>
+          </div>
+        ) : null}
       </div>
     </>
   );
 }
 
-/* ---------- all games ---------- */
-function Overview({ D, setSel, setProj, confirm, setConfirm, say }: { D: Data; setSel: (v: string) => void; setProj: SetProj; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void }) {
-  const all = counts(D, 'all');
-  const firstDev = SCENARIOS.findIndex((s) => s.track === 'dev');
-  const states = SCENARIOS.map((s) => G(D, s.id).state || 'closed');
-  const anyOpen = states.includes('open'), anyPaused = states.includes('paused'), anyLive = anyOpen || anyPaused;
-  const allState = (v: string) => {
+/* ---------- all games: registration, the lobby, and the game list ---------- */
+function Overview({ D, now, base, setSel, setProj, confirm, setConfirm, say, openTeam }: {
+  D: Data; now: number; base: string; setSel: (v: string) => void; setProj: SetProj; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void; openTeam: (u: string) => void;
+}) {
+  const all = counts(D, 'all', now);
+  const reg = D.event?.reg === 'open';
+  const demo = getStore().mode === 'demo';
+  const url = base && !demo ? playUrl() : '';
+  const states = SCENARIOS.map((s) => G(D, s.id).state || 'open');
+  const anyPaused = states.includes('paused');
+  const allState = (v: 'paused' | 'open' | 'ended') => {
     let n = 0;
     SCENARIOS.forEach((s) => {
-      const st = G(D, s.id).state || 'closed';
-      if (v === 'open' && (st === 'closed' || st === 'ended')) { setGameState(D, s.id, 'open'); n++; }
-      if (v === 'paused' && st === 'open') { setGameState(D, s.id, 'paused'); n++; }
-      if (v === 'resume' && st === 'paused') { setGameState(D, s.id, 'open'); n++; }
-      if (v === 'ended' && st !== 'ended' && st !== 'closed') { setGameState(D, s.id, 'ended'); n++; }
+      const st = G(D, s.id).state || 'open', active = teamsOf(D, s.id).some((t) => ['playing', 'paused'].includes(resultOf(D, t, now).status));
+      if (v === 'paused' && st !== 'paused' && active) { setGameState(D, s.id, 'paused'); n++; }
+      if (v === 'open' && st === 'paused') { setGameState(D, s.id, 'open'); n++; }
+      if (v === 'ended' && active) { setGameState(D, s.id, 'ended'); n++; }
     });
-    setConfirm(null);
-    say(n + ' game' + (n === 1 ? '' : 's') + ' updated');
+    setConfirm(null); say(n + ' game' + (n === 1 ? '' : 's') + ' updated');
   };
   return (
     <>
-      <div className="toolbar">
-        <p className="sumline"><b>{all.total}</b> teams · {all.waiting} waiting · {all.playing + all.paused} playing · {all.finished + all.stopped} finished</p>
+      <div className="joinbar">
+        {url ? <QRBox value={url} size={84} label="QR code to join" className="mini" /> : null}
+        <div className="jroom">
+          <span className="lbl">Registration</span>
+          <div className="seg" role="group" aria-label="Registration">
+            <button type="button" aria-pressed={!reg} onClick={() => setRegistration(false)} data-a="reg" data-v="closed">Closed</button>
+            <button type="button" aria-pressed={reg} onClick={() => setRegistration(true)} data-a="reg" data-v="open">Open</button>
+          </div>
+          <span className="small">{all.total} registered · {all.lobby} need a game · {all.waiting} ready · {all.playing + all.paused} playing · {all.finished + all.stopped} done</span>
+        </div>
         <span className="sp" />
-        <button className="b2" type="button" onClick={() => allState('open')}>Open all</button>
-        {anyOpen ? <button className="b2" type="button" onClick={() => allState('paused')}>Pause all</button>
-          : anyPaused ? <button className="b2" type="button" onClick={() => allState('resume')}>Resume all</button> : null}
-        {anyLive ? (confirm === 'endall'
+        <div className="screens">
+          <span className="lbl">Big screen</span>
+          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'lobby', gid: 'all' })} data-a="proj-lobby">Lobby + QR</button>
+          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'race', gid: 'all' })} data-a="race-all">Live race</button>
+          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'board', gid: 'all' })} data-a="proj-podium">Winners</button>
+        </div>
+      </div>
+      <LobbyPanel D={D} say={say} openTeam={openTeam} />
+      <div className="toolbar">
+        <b>Games</b>
+        <span className="sp" />
+        {all.waiting ? <button className="b2 pri" type="button" onClick={() => { const n = startAll(D, 'all', now); say('Launched ' + n + ' team' + (n === 1 ? '' : 's')); }} data-a="startall-all"><Play size={14} aria-hidden /> Launch all ready ({all.waiting})</button> : null}
+        {anyPaused ? <button className="b2" type="button" onClick={() => allState('open')}>Resume all</button>
+          : all.playing ? <button className="b2" type="button" onClick={() => allState('paused')}>Pause all</button> : null}
+        {all.playing + all.paused ? (confirm === 'endall'
           ? <><button className="b2 warn" type="button" onClick={() => allState('ended')}>Yes, end all</button><button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
           : <button className="b2 warn" type="button" onClick={() => setConfirm('endall')}>End all</button>) : null}
-        <button className="b2" type="button" onClick={() => setProj({ kind: 'race', gid: 'all' })} data-a="race-all">Live race, all games</button>
       </div>
       <div className="glist">
-        {SCENARIOS.map((s, i) => {
-          const g = G(D, s.id), c = counts(D, s.id), st = g.state || 'closed';
-          return (
-            <div key={s.id}>
-              {i === firstDev ? <div className="side-h">Reserve · developer round</div> : null}
-              <div className="grow">
-                <button type="button" className="gmain" onClick={() => setSel(s.id)} data-a="sel" data-v={s.id}>
-                  <span className="gnum">{i + 1}</span>
-                  <span className="gt"><b>{s.title}</b><small>{s.threat}</small></span>
-                </button>
-                <Pill kind={st}>{GS_LABEL[st]}</Pill>
-                <span className="gmeta">{g.room ? 'Room ' + g.room : ''}{c.total ? ' · ' + c.total + ' team' + (c.total === 1 ? '' : 's') : ''}</span>
-                {st === 'closed' || st === 'ended'
-                  ? <button className="b2 sm" type="button" onClick={() => setGameState(D, s.id, 'open')} data-a="gstate" data-g={s.id} data-v="open">Open</button>
-                  : <button className="b2 sm" type="button" onClick={() => setGameState(D, s.id, 'closed')}>Close</button>}
-                <button className="b2 sm ic" type="button" onClick={() => setSel(s.id)} aria-label={'Manage ' + s.title}><ChevronRight size={16} aria-hidden /></button>
-              </div>
-            </div>
-          );
-        })}
+        {SECTIONS.map((sec) => (
+          <div key={sec.track}>
+            {sec.track !== 'core' ? <div className="side-h">{sec.label}</div> : null}
+            {SCENARIOS.filter((s) => s.track === sec.track).map((s) => {
+              const g = G(D, s.id), c = counts(D, s.id, now), st = g.state || 'open', i = SCENARIOS.indexOf(s);
+              return (
+                <div key={s.id} className="grow">
+                  <button type="button" className="gmain" onClick={() => setSel(s.id)} data-a="sel" data-v={s.id}>
+                    <span className={'gnum' + (s.track === 'lead' ? ' lead' : '')}>{i + 1}</span>
+                    <span className="gt"><b>{s.title}</b><small>{s.threat}</small></span>
+                  </button>
+                  {st !== 'open' ? <Pill kind={st}>{GS_LABEL[st]}</Pill> : null}
+                  <span className="gmeta">{c.total ? c.total + ' team' + (c.total === 1 ? '' : 's') + (c.playing + c.paused ? ' · ' + (c.playing + c.paused) + ' playing' : '') : 'No teams'}</span>
+                  <button className="b2 sm ic" type="button" onClick={() => setSel(s.id)} aria-label={'Open ' + s.title}><ChevronRight size={16} aria-hidden /></button>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </>
+  );
+}
+
+/** Teams that registered but don't have a game yet. */
+function LobbyPanel({ D, say, openTeam }: { D: Data; say: (m: string) => void; openTeam: (u: string) => void }) {
+  const list = lobbyTeams(D);
+  const [pick, setPick] = useState<string[]>(() => lsGet<string[]>('kbr-auto') || SCENARIOS.filter((s) => s.track === 'core').map((s) => s.id));
+  const [showAuto, setShowAuto] = useState(false);
+  if (!list.length) return D.event?.reg === 'open' ? <div className="empty slim">Registration is open. Teams appear here as they register; then you give each one a game.</div> : null;
+  const toggle = (id: string) => { const n = pick.includes(id) ? pick.filter((x) => x !== id) : [...pick, id]; setPick(n); lsSet('kbr-auto', n); };
+  return (
+    <div className="card lobby-card">
+      <div className="toolbar" style={{ margin: 0 }}>
+        <b>Waiting for a game ({list.length})</b>
+        <span className="sp" />
+        <button className="b2 pri sm" type="button" onClick={() => setShowAuto(!showAuto)} data-a="auto"><Shuffle size={14} aria-hidden /> Auto-assign</button>
+      </div>
+      {showAuto ? (
+        <div className="autobox">
+          <p className="small" style={{ margin: '0 0 6px' }}>Spread these teams evenly across the games you tick:</p>
+          <div className="checks">
+            {SCENARIOS.map((s) => <label key={s.id}><input type="checkbox" checked={pick.includes(s.id)} onChange={() => toggle(s.id)} data-a="autopick" data-v={s.id} /> {s.title}</label>)}
+          </div>
+          <button className="b2 pri sm" type="button" disabled={!pick.length} onClick={() => { const n = autoAssign(D, pick); setShowAuto(false); say(n + ' team' + (n === 1 ? '' : 's') + ' assigned'); }} data-a="autogo">Assign {list.length} team{list.length === 1 ? '' : 's'}</button>
+        </div>
+      ) : null}
+      <div className="lobby-rows">
+        {list.map((t) => (
+          <div key={t.uid} className="lrow">
+            <button type="button" className="tn" onClick={() => openTeam(t.uid)} data-a="open" data-v={t.uid}>{t.name}</button>
+            <span className="small">{clock(t.joinedAt || 0)}</span>
+            <span className="sp" />
+            <select className="sel sm" value="" onChange={(ev) => { if (ev.target.value && assignTeam(D, t.uid, ev.target.value)) say(t.name + ' → ' + gameById(ev.target.value)?.title); }} aria-label={'Game for ' + t.name} data-a="assign" data-v={t.uid}>
+              <option value="">Choose a game…</option>
+              {SECTIONS.map((sec) => <optgroup key={sec.track} label={sec.label}>{SCENARIOS.filter((s) => s.track === sec.track).map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}</optgroup>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      <p className="small" style={{ margin: '8px 0 0' }}>Once a team has a game it gets a 4-digit team key. Read it to them, or press Launch.</p>
+    </div>
   );
 }
 
@@ -178,15 +241,14 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
   const s = gameById(gid);
   const [bc, setBc] = useState('');
   if (!s) return null;
-  const g = G(D, gid), list = teamsOf(D, gid), c = counts(D, gid);
-  const url = g.room ? playUrl({ room: g.room }) : '';
-  const demo = getStore().mode === 'demo';
-  const st = g.state || 'closed';
+  const g = G(D, gid), res = resultsOf(D, gid, now), c = counts(D, gid, now);
+  const st = g.state || 'open';
   return (
     <>
       <div className="ghead">
         <h2>{s.title}</h2>
-        <Pill kind={st}>{GS_LABEL[st]}</Pill>
+        {st !== 'open' ? <Pill kind={st}>{GS_LABEL[st]}</Pill> : null}
+        <span className="tagline">{TRACKS[s.track]} · par {fmt(parOf(D, gid))}</span>
         <span className="sp" />
         <div className="seg" role="group" aria-label="Difficulty">
           <button type="button" aria-pressed={g.mode !== 'x'} onClick={() => setMode(D, gid, 'std')} data-a="gmode" data-v="std">Standard</button>
@@ -194,52 +256,42 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
         </div>
       </div>
       <div className="toolbar">
-        {st === 'closed' || st === 'ended' ? <button className="b2 good" type="button" onClick={() => { setGameState(D, gid, 'open'); say(s.title + ': registration open'); }} data-a="gstate" data-g={gid} data-v="open">Open registration</button>
-          : <button className="b2 pri" type="button" disabled={!c.waiting} onClick={() => { const n = startAll(D, gid); say(n ? 'Launched ' + n + ' team' + (n === 1 ? '' : 's') : 'No teams are waiting'); }} data-a="startall">Launch all waiting ({c.waiting})</button>}
+        <button className="b2 pri" type="button" disabled={!c.waiting} onClick={() => { const n = startAll(D, gid, now); say(n ? 'Launched ' + n + ' team' + (n === 1 ? '' : 's') : 'No teams are ready'); }} data-a="startall"><Play size={14} aria-hidden /> Launch all ready ({c.waiting})</button>
         {st === 'paused' ? <button className="b2 good" type="button" onClick={() => setGameState(D, gid, 'open')} data-a="gstate" data-g={gid} data-v="resume">Resume</button>
-          : st === 'open' ? <button className="b2" type="button" onClick={() => setGameState(D, gid, 'paused')} data-a="gstate" data-g={gid} data-v="paused">Pause</button> : null}
-        {st === 'open' || st === 'paused' ? (confirm === 'end:' + gid
+          : st === 'ended' ? <button className="b2" type="button" onClick={() => setGameState(D, gid, 'open')} data-a="gstate" data-g={gid} data-v="reopen">Reopen</button>
+          : <button className="b2" type="button" onClick={() => setGameState(D, gid, 'paused')} data-a="gstate" data-g={gid} data-v="paused">Pause</button>}
+        {st !== 'ended' ? (confirm === 'end:' + gid
           ? <><button className="b2 warn" type="button" onClick={() => { setGameState(D, gid, 'ended'); setConfirm(null); }} data-a="endyes">Yes, end for everyone</button><button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
           : <button className="b2 warn" type="button" onClick={() => setConfirm('end:' + gid)} data-a="end">End game</button>) : null}
-      </div>
-      <div className="joinbar">
-        {url && !demo ? <QRBox value={url} size={84} label={'QR code for ' + s.title} className="mini" /> : null}
-        <div className="jroom">
-          <span className="lbl">Room code</span>
-          <span className="bigroom">{g.room || '····'}</span>
-          {url ? <button className="linkish" type="button" onClick={() => { void copyText(url).then((ok) => say(ok ? 'Link copied' : 'Couldn’t copy')); }}><Copy size={13} aria-hidden /> Copy link</button> : null}
-        </div>
         <span className="sp" />
-        <div className="screens" role="group" aria-label="Show on the big screen">
-          <span className="lbl">Big screen</span>
-          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'lobby', gid })} data-a="proj-lobby">Lobby + QR</button>
-          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'race', gid })} data-a="proj-race">Live race</button>
-          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'reveal', gid })} data-a="proj-reveal">Answers</button>
-          <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'board', gid })} data-a="proj-board">Leaderboard</button>
-        </div>
+        <span className="lbl">Big screen</span>
+        <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'race', gid })} data-a="proj-race">Live race</button>
+        <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'reveal', gid })} data-a="proj-reveal">Answers</button>
+        <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'board', gid })} data-a="proj-board">Leaderboard</button>
       </div>
-      {list.length ? (
+      {res.length ? (
         <div className="log-wrap">
           <table className="ttable">
             <thead><tr><th>Team</th><th>Status</th><th>Where</th><th>Time</th><th>Wrong</th><th /></tr></thead>
             <tbody>
-              {list.map((t) => {
-                const p = prog(t), stt = tStatus(D, t), code = D.secrets[t.uid]?.code, ctl = ctlOf(D, t.uid);
-                let where: ReactNode = stt === 'waiting' ? <>Code <span className="code4">{code || '…'}</span></>
+              {res.map((r) => {
+                const t = D.teams[r.uid] || {}, p = t.prog || {}, code = D.secrets[r.uid]?.code, ctl = ctlOf(D, r.uid);
+                let where: ReactNode = r.status === 'waiting' ? <>Key <span className="code4">{code || '…'}</span></>
                   : p.pendingInject ? <span className="q-poor">Surprise: {injectById(p.pendingInject)?.name}</span> : <Html html={p.nodeName || ''} />;
-                if (stt === 'finished' || stt === 'stopped') where = p.outcome || '';
-                const sn = seatsOf(D, t.uid).length, ins = D.insiders[t.uid];
+                if (t.help && (r.status === 'playing' || r.status === 'paused')) where = <>{where}<div><span className="helptag">Asked for Security · {fmt(Math.max(0, Math.round((now - t.help.at) / 1000)))}</span></div></>;
+                if (r.status === 'finished' || r.status === 'stopped') where = r.outcome.label;
+                const sn = seatsOf(D, r.uid).length, ins = D.insiders[r.uid];
                 return (
-                  <tr key={t.uid} className={selTeam === t.uid ? 'sel' : ''}>
-                    <td><button type="button" className="tn" onClick={() => openTeam(t.uid)} data-a="open" data-v={t.uid}>{t.name}</button></td>
-                    <td><Pill kind={stt}>{ST_LABEL[stt] || stt}</Pill></td>
+                  <tr key={r.uid} className={selTeam === r.uid ? 'sel' : ''}>
+                    <td><button type="button" className="tn" onClick={() => openTeam(r.uid)} data-a="open" data-v={r.uid}>{r.name}</button>{r.flags.length ? <span className="flag" title={r.flags.join(' · ')}> ⚑</span> : null}</td>
+                    <td><Pill kind={r.status}>{ST_LABEL[r.status] || r.status}</Pill></td>
                     <td>{where}{g.insider || p.insider ? <div className="small">{sn} teammate{sn === 1 ? '' : 's'}{ins ? ' · roles dealt' : ''}{t.vote ? ' · voted' : ''}{ctl.reveal ? ' · revealed' : ''}</div> : null}</td>
-                    <td className="mono">{p.startedAt ? fmt(liveTime(D, t, now)) : '—'}</td>
-                    <td className="mono">{p.wrong || 0}</td>
+                    <td className="mono">{r.T.startAt ? fmt(r.final) : '—'}</td>
+                    <td className="mono">{r.T.wrong}</td>
                     <td><div className="acts end">
-                      {stt === 'waiting' ? <button className="b2 pri sm" type="button" onClick={() => { teamCmd(D, t.uid, 'launch'); say('Launched ' + t.name); }} data-a="launch">Launch</button>
-                        : stt === 'playing' || stt === 'paused' ? <button className="b2 sm" type="button" onClick={() => teamCmd(D, t.uid, 'pause')}>{ctl.pause ? 'Resume' : 'Pause'}</button> : null}
-                      <button className="b2 sm" type="button" onClick={() => openTeam(t.uid)} data-a="control">Control</button>
+                      {r.status === 'waiting' ? <button className="b2 pri sm" type="button" onClick={() => { teamCmd(D, r.uid, 'launch'); say('Launched ' + r.name); }} data-a="launch">Launch</button>
+                        : r.status === 'playing' || r.status === 'paused' ? <button className="b2 sm" type="button" onClick={() => teamCmd(D, r.uid, 'pause')}>{ctl.pause ? 'Resume' : 'Pause'}</button> : null}
+                      <button className="b2 sm" type="button" onClick={() => openTeam(r.uid)} data-a="control">Control</button>
                     </div></td>
                   </tr>
                 );
@@ -247,18 +299,18 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
             </tbody>
           </table>
         </div>
-      ) : <div className="empty">{st === 'open' ? 'No teams yet. Show the lobby on the big screen; teams appear here as they register.' : 'Open registration, then show the lobby on the big screen. Teams appear here as they register.'}</div>}
+      ) : <div className="empty">No teams in this game yet. Assign teams from the lobby on the Games page.</div>}
       <details className="more" open={g.insider ? true : undefined}>
         <summary data-a="more">More: message everyone, surprise events, Insider round</summary>
         <div className="more-b">
-          <h4>Message every team</h4>
-          <form className="msgrow" onSubmit={(ev) => { ev.preventDefault(); if (bc.trim()) { const n = broadcast(D, gid, bc.trim()); setBc(''); say('Message sent to ' + n + ' team' + (n === 1 ? '' : 's')); } }}>
+          <h4>Message every team in this game</h4>
+          <form className="msgrow" onSubmit={(ev) => { ev.preventDefault(); if (bc.trim()) { const n = broadcast(D, gid, bc.trim(), now); setBc(''); say('Message sent to ' + n + ' team' + (n === 1 ? '' : 's')); } }}>
             <input placeholder="e.g. Five minutes left!" maxLength={140} value={bc} onChange={(ev) => setBc(ev.target.value)} aria-label="Message to all teams" />
             <button className="b2" type="submit">Send</button>
           </form>
           <h4>Surprise event for every team playing</h4>
           <div className="acts">
-            {INJECTS.map((I) => <button key={I.id} className="b2 sm" type="button" title={I.prompt} onClick={() => { const n = injectAll(D, gid, I.id); say(I.name + ' sent to ' + n + ' team' + (n === 1 ? '' : 's')); }}>{I.name}</button>)}
+            {INJECTS.map((I) => <button key={I.id} className="b2 sm" type="button" title={I.prompt} onClick={() => { const n = injectAll(D, gid, I.id, now); say(I.name + ' sent to ' + n + ' team' + (n === 1 ? '' : 's')); }}>{I.name}</button>)}
           </div>
           <h4>Insider round</h4>
           <div className="acts">
@@ -269,11 +321,11 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
             {g.insider ? (
               <>
                 <button className="b2 pri" type="button" onClick={() => { const r = dealRoles(D, gid); say('Roles dealt to ' + r.n + ' team' + (r.n === 1 ? '' : 's') + (r.few ? ' · ' + r.few + ' waiting for 2+ teammates' : '')); }} data-a="deal">Deal secret roles</button>
-                <button className="b2" type="button" onClick={() => { const n = revealAll(D, gid); say(n ? 'Revealed for ' + n + ' team' + (n === 1 ? '' : 's') : 'Nothing to reveal yet: teams reveal after they finish'); }} data-a="revealall">Reveal Insiders</button>
+                <button className="b2" type="button" onClick={() => { const n = revealAll(D, gid, now); say(n ? 'Revealed for ' + n + ' team' + (n === 1 ? '' : 's') : 'Nothing to reveal yet: teams reveal after they finish'); }} data-a="revealall">Reveal Insiders</button>
               </>
             ) : null}
           </div>
-          <p className="small">{g.insider ? 'Turn on before teams register. Teammates scan the code on their team’s phone; deal roles before you launch.' : 'A reserve twist: one teammate secretly works against the team, and teams vote at the end.'}</p>
+          <p className="small">{g.insider ? 'Turn on before you assign teams to this game. Teammates scan the code on their team’s phone; deal roles before you launch.' : 'A reserve twist: one teammate secretly works against the team, and teams vote at the end.'}</p>
         </div>
       </details>
     </>
@@ -285,15 +337,18 @@ function Drawer({ D, uid, now, pickNode, setPickNode, confirm, setConfirm, say, 
   D: Data; uid: string; now: number; pickNode: NodeId | null; setPickNode: (n: NodeId | null) => void; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void; onClose: () => void;
 }) {
   const [msg, setMsg] = useState('');
-  const t: Team = { uid, ...D.teams[uid] }, p = prog(t), st = tStatus(D, t), ctl = ctlOf(D, uid), s = gameById(t.game), code = D.secrets[uid]?.code;
+  const [adjBy, setAdjBy] = useState(0);
+  const [why, setWhy] = useState('');
+  const t: Team = { uid, ...D.teams[uid], game: D.assign[uid] || '' } as Team;
+  const r = t.game ? resultOf(D, t, now) : null;
+  const st = r ? r.status : 'lobby', ctl = ctlOf(D, uid), s = gameById(t.game), code = D.secrets[uid]?.code;
   const active = st === 'playing' || st === 'paused';
-  const cmd = (c: TeamCmd, arg?: string | number, label?: string) => { teamCmd(D, uid, c, arg); setConfirm(null); if (label) say(label); };
+  const cmd = (c: TeamCmd, arg?: string | number, label?: string, reason?: string) => { teamCmd(D, uid, c, arg, reason); setConfirm(null); if (label) say(label); };
   const tl = logRows(D).filter((l) => l.uid === uid).slice(-40).reverse();
   const seats = seatsOf(D, uid), ins = D.insiders[uid];
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose]);
-  if (!s) return null;
-  const gr = graph(t.game), node = p.node ? gr[p.node as NodeId] : null;
-  const where = st === 'waiting' ? 'Waiting to start' : st === 'finished' || st === 'stopped' ? p.outcome || ST_LABEL[st] : node ? (node.type === 'decision' || node.id === 'X' ? lockNumber(node) : lockNumber(node) + ' of ' + LOCK_COUNT) + ': ' + (node.type === 'end' ? '' : node.name) : '';
+  const node = r && t.prog?.node && s ? graph(t.game)[t.prog.node as NodeId] : null;
+  const where = !r ? 'No game yet' : st === 'waiting' ? 'Ready to start' : st === 'finished' || st === 'stopped' ? r.outcome.label : node ? (node.type === 'decision' || node.id === 'X' ? lockNumber(node) : lockNumber(node) + ' of ' + LOCK_COUNT) + ': ' + (node.type === 'end' ? '' : node.name) : '';
   return (
     <div className="drawer" role="dialog" aria-label="Team control">
       <div className="drawer-h">
@@ -303,82 +358,118 @@ function Drawer({ D, uid, now, pickNode, setPickNode, confirm, setConfirm, say, 
       </div>
       <div className="drawer-b">
         <div className="dsum">
-          <div className="bigtime">{p.startedAt ? fmt(liveTime(D, t, now)) : '—'}</div>
+          <div className="bigtime">{r && r.T.startAt ? fmt(r.final) : '—'}</div>
           <div>
             <div className="dwhere">{where}</div>
-            <div className="small">{s.title} · {MODES[(p.mode || G(D, t.game).mode || 'std') as 'std' | 'x'].label} · {p.wrong || 0} wrong · {p.pen || 0}s added{ctl.adj ? ' · ' + (ctl.adj > 0 ? '+' : '') + ctl.adj + 's by you' : ''}</div>
+            <div className="small">{s ? s.title + ' · ' + MODES[(G(D, t.game).mode || 'std') as 'std' | 'x'].label : 'Registered ' + clock(t.joinedAt || 0)}{r && r.T.startAt ? ' · clock ' + fmt(r.clock) + ' · ' + r.T.wrong + ' wrong · ' + r.pen + 's penalties' + (r.adj ? ' · ' + (r.adj > 0 ? '+' : '') + r.adj + 's by you' : '') : ''}</div>
+            {r && r.flags.length ? <div className="small flag">Check: {r.flags.join(' · ')}</div> : null}
           </div>
         </div>
-        {st === 'waiting' ? (
+        {!r || st === 'waiting' ? (
           <div className="sec">
-            <p style={{ margin: '0 0 8px' }}>Launch code <span className="code4">{code || '…'}</span></p>
-            <div className="acts"><button className="b2 pri" type="button" onClick={() => cmd('launch', undefined, 'Launched')} data-a="t-launch">Launch now</button><button className="b2" type="button" onClick={() => cmd('newcode', undefined, 'New code issued')}>New code</button></div>
+            <div className="acts">
+              <span className="lbl">Game</span>
+              <select className="sel sm" value={t.game} onChange={(ev) => { if (assignTeam(D, uid, ev.target.value)) say(ev.target.value ? 'Assigned to ' + gameById(ev.target.value)?.title : 'Moved back to the lobby'); }} data-a="t-assign">
+                <option value="">No game yet</option>
+                {SECTIONS.map((sec) => <optgroup key={sec.track} label={sec.label}>{SCENARIOS.filter((x) => x.track === sec.track).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</optgroup>)}
+              </select>
+            </div>
+            {r ? (
+              <>
+                <p style={{ margin: '10px 0 8px' }}>Team key <span className="code4">{code || '…'}</span></p>
+                <div className="acts"><button className="b2 pri" type="button" onClick={() => cmd('launch', undefined, 'Launched')} data-a="t-launch">Launch now</button><button className="b2" type="button" onClick={() => cmd('newcode', undefined, 'New key issued')}>New key</button></div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {active && t.help ? (
+          <div className="sec helpalert inline">
+            <b>Asked for the Security team</b> <span className="small">at {t.help.label} · waiting {fmt(Math.max(0, Math.round((now - t.help.at) / 1000)))}</span>
+            <div className="acts" style={{ marginTop: 8 }}>
+              <button className="b2 sm pri" type="button" onClick={() => cmd('help', 'person', 'Security sent (+' + LIFELINE_S + 's)')} data-a="t-help" data-v="person">Send someone (+{LIFELINE_S}s)</button>
+              <button className="b2 sm" type="button" onClick={() => cmd('help', 'phone', 'Hint sent to their phone (+' + LIFELINE_S + 's)')} data-a="t-help" data-v="phone">Hint to their phone (+{LIFELINE_S}s)</button>
+              <button className="b2 sm" type="button" onClick={() => cmd('help', 'no', 'Lifeline returned')} data-a="t-help" data-v="no">No one free</button>
+            </div>
           </div>
         ) : null}
         {active ? (
           <div className="sec">
             <div className="acts">
               <button className="b2" type="button" onClick={() => cmd('pause', undefined, 'Done')} data-a="t-pause">{ctl.pause ? 'Resume' : 'Pause'}</button>
-              <button className="b2" type="button" onClick={() => cmd('hint', undefined, 'Free hint sent')} data-a="t-hint">Send a hint</button>
+              <button className="b2" type="button" onClick={() => cmd('hint', undefined, 'Hint sent (+' + HINT_S + 's)')} data-a="t-hint">Send a hint (+{HINT_S}s)</button>
               {confirm === 'tend:' + uid
                 ? <><button className="b2 warn" type="button" onClick={() => cmd('end', undefined, 'Game ended for that team')} data-a="t-end">Yes, end their game</button><button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
                 : <button className="b2 warn" type="button" onClick={() => setConfirm('tend:' + uid)} data-a="t-endq">End their game</button>}
             </div>
           </div>
         ) : null}
-        <div className="sec">
-          <div className="acts">
-            <span className="lbl">Time</span>
-            <button className="b2 sm" type="button" onClick={() => cmd('adj', -30, 'Time adjusted')}>−30s</button>
-            <button className="b2 sm" type="button" onClick={() => cmd('adj', 30, 'Time adjusted')}>+30s</button>
-            <button className="b2 sm" type="button" onClick={() => cmd('adj', 60, 'Time adjusted')}>+1 min</button>
+        {r && r.T.startAt ? (
+          <div className="sec">
+            <div className="acts">
+              <span className="lbl">Adjust time</span>
+              {[-30, 30, 60].map((d) => <button key={d} className={'b2 sm' + (adjBy === d ? ' on' : '')} type="button" onClick={() => setAdjBy(adjBy === d ? 0 : d)} data-a="t-adj" data-v={d}>{d > 0 ? '+' : '−'}{Math.abs(d)}s</button>)}
+            </div>
+            {adjBy ? (
+              <form className="msgrow" style={{ marginTop: 8 }} onSubmit={(ev) => { ev.preventDefault(); if (why.trim()) { cmd('adj', adjBy, 'Time adjusted', why.trim()); setAdjBy(0); setWhy(''); } }}>
+                <input maxLength={80} placeholder="Reason (required), e.g. phone crashed" value={why} onChange={(ev) => setWhy(ev.target.value)} aria-label="Reason" data-a="t-adjwhy" autoFocus />
+                <button className="b2 pri" type="submit" disabled={!why.trim()} data-a="t-adjgo">Apply {adjBy > 0 ? '+' : '−'}{Math.abs(adjBy)}s</button>
+              </form>
+            ) : null}
           </div>
-        </div>
-        <div className="sec">
-          <form className="msgrow" onSubmit={(ev) => { ev.preventDefault(); if (msg.trim()) { cmd('msg', msg.trim(), 'Message sent'); setMsg(''); } }}>
-            <input maxLength={140} placeholder="Message this team" value={msg} onChange={(ev) => setMsg(ev.target.value)} aria-label="Message" data-a="t-msginput" />
-            <button className="b2" type="submit" data-a="t-msg">Send</button>
-          </form>
-        </div>
-        <div className="sec">
-          <h3>Game tree</h3>
-          <Tree gid={t.game} p={p} picked={pickNode} onPick={setPickNode} />
-          {pickNode ? (
-            <div className="note-box">Send this team to <strong>{gr[pickNode].label}</strong>?
-              <div className="acts" style={{ marginTop: 6 }}>
-                <button className="b2 pri sm" type="button" disabled={!active} onClick={() => { cmd('jump', pickNode, 'Team moved'); setPickNode(null); }} data-a="t-jump">Send team here</button>
-                <button className="b2 sm" type="button" onClick={() => setPickNode(null)}>Cancel</button>
+        ) : null}
+        {r ? (
+          <div className="sec">
+            <form className="msgrow" onSubmit={(ev) => { ev.preventDefault(); if (msg.trim()) { cmd('msg', msg.trim(), 'Message sent'); setMsg(''); } }}>
+              <input maxLength={140} placeholder="Message this team" value={msg} onChange={(ev) => setMsg(ev.target.value)} aria-label="Message" data-a="t-msginput" />
+              <button className="b2" type="submit" data-a="t-msg">Send</button>
+            </form>
+          </div>
+        ) : null}
+        {r && r.T.startAt && (st === 'finished' || st === 'stopped') ? (
+          <div className="sec"><h3>Kavach report</h3><ReportView rep={reportOf(r)} /></div>
+        ) : null}
+        {r && r.T.startAt ? (
+          <div className="sec">
+            <h3>Game tree</h3>
+            <Tree gid={t.game} p={{ ...(t.prog || {}), status: st === 'finished' ? 'finished' : t.prog?.status }} picked={pickNode} onPick={setPickNode} />
+            {pickNode ? (
+              <div className="note-box">Send this team to <strong>{graph(t.game)[pickNode].label}</strong>?
+                <div className="acts" style={{ marginTop: 6 }}>
+                  <button className="b2 pri sm" type="button" disabled={!active} onClick={() => { cmd('jump', pickNode, 'Team moved'); setPickNode(null); }} data-a="t-jump">Send team here</button>
+                  <button className="b2 sm" type="button" onClick={() => setPickNode(null)}>Cancel</button>
+                </div>
+                {active ? null : <p className="small" style={{ margin: '6px 0 0' }}>Only teams that are playing can be moved.</p>}
               </div>
-              {active ? null : <p className="small" style={{ margin: '6px 0 0' }}>Only teams that are playing can be moved.</p>}
-            </div>
-          ) : <p className="small">Tap a step to move this team there.</p>}
-        </div>
-        <details className="more">
-          <summary data-a="t-more">Surprise event for this team</summary>
-          <div className="more-b">
-            <div className="injgrid">
-              {INJECTS.map((I) => <button key={I.id} className="b2 sm" type="button" disabled={!active} title={I.prompt} onClick={() => cmd('inject', I.id, 'Surprise event sent')} data-a="t-inject" data-v={I.id}>{I.name}</button>)}
-            </div>
-            {p.pendingInject ? <p className="small" style={{ margin: '6px 0 0' }}>Waiting for them to answer: {injectById(p.pendingInject)?.name}</p> : null}
+            ) : <p className="small">Tap a step to move this team there.</p>}
           </div>
-        </details>
-        {G(D, t.game).insider || p.insider ? (
+        ) : null}
+        {active ? (
+          <details className="more">
+            <summary data-a="t-more">Surprise event for this team</summary>
+            <div className="more-b">
+              <div className="injgrid">
+                {INJECTS.map((I) => <button key={I.id} className="b2 sm" type="button" title={I.prompt} onClick={() => cmd('inject', I.id, 'Surprise event sent')} data-a="t-inject" data-v={I.id}>{I.name}</button>)}
+              </div>
+              {t.prog?.pendingInject ? <p className="small" style={{ margin: '6px 0 0' }}>Waiting for them to answer: {injectById(t.prog.pendingInject)?.name}</p> : null}
+            </div>
+          </details>
+        ) : null}
+        {r && (G(D, t.game).insider || t.prog?.insider) ? (
           <div className="sec">
             <h3>Insider round</h3>
             <p style={{ margin: '0 0 8px' }}>
               {seats.length ? seats.map((x) => <span key={x.uid} className={'pill' + (ins && ins.member === x.uid ? ' ended' : '')} style={{ marginRight: 6 }}>{x.seat}{ins && ins.member === x.uid ? ' · INSIDER' : ''}{t.vote === x.uid ? ' · voted' : ''}</span>)
                 : <span className="muted">No teammates joined yet.</span>}
             </p>
-            {!ins ? (seats.length >= 2 ? <button className="b2 pri sm" type="button" onClick={() => { const r = dealTeam(D, t); say(r === 'ok' ? 'Roles dealt' : r === 'few' ? 'Need at least 2 teammates' : 'Already dealt'); }}>Deal roles for this team</button> : <span className="small">Waiting for at least 2 teammates to join.</span>)
+            {!ins ? (seats.length >= 2 ? <button className="b2 pri sm" type="button" onClick={() => { const x = dealTeam(D, t); say(x === 'ok' ? 'Roles dealt' : x === 'few' ? 'Need at least 2 teammates' : 'Already dealt'); }}>Deal roles for this team</button> : <span className="small">Waiting for at least 2 teammates to join.</span>)
               : ctl.reveal ? <span className={ctl.reveal.correct ? 'q-best' : 'q-poor'}>{ctl.reveal.correct ? 'Caught' : 'Escaped'}{ctl.reveal.voteSeat ? ' · voted ' + ctl.reveal.voteSeat : ' · no vote'}</span>
-              : p.status === 'finished' ? <button className="b2 pri sm" type="button" onClick={() => { if (revealInsider(D, t)) say('Insider revealed'); }}>Reveal the Insider{t.vote ? '' : ' (no vote yet)'}</button>
+              : r.completed ? <button className="b2 pri sm" type="button" onClick={() => { if (revealInsider(D, t)) say('Insider revealed'); }}>Reveal the Insider{t.vote ? '' : ' (no vote yet)'}</button>
               : <span className="small">Reveal unlocks when they finish and vote.</span>}
           </div>
         ) : null}
         <details className="more">
-          <summary>Decisions and activity</summary>
+          <summary>Activity</summary>
           <div className="more-b">
-            {p.choices?.length ? <ul className="choicelog">{p.choices.map((c: { q: string; label: string }, i: number) => <li key={i}><span className={'q-' + c.q}>{c.q.toUpperCase()}</span> <Html html={c.label} /></li>)}</ul> : null}
             <div className="tlog">{tl.length ? tl.map((l, i) => <div key={i}><time>{clock(l.at)}</time><strong>{LOG_TEXT[l.type] || l.type}</strong> {l.detail}</div>) : <div className="muted">Nothing yet.</div>}</div>
           </div>
         </details>
@@ -393,25 +484,25 @@ function Drawer({ D, uid, now, pickNode, setPickNode, confirm, setConfirm, say, 
 }
 
 /* ---------- results ---------- */
-function BoardTab({ D, gid, setGid, setProj, say }: { D: Data; gid: string; setGid: (g: string) => void; setProj: SetProj; say: (m: string) => void }) {
+function ResultsTab({ D, now, gid, setGid, setProj, say }: { D: Data; now: number; gid: string; setGid: (g: string) => void; setProj: SetProj; say: (m: string) => void }) {
   return (
     <>
       <div className="toolbar">
         <select className="sel" value={gid} onChange={(ev) => setGid(ev.target.value)} aria-label="Game">
-          <option value="all">All games</option>
+          <option value="all">Whole event: the three winners</option>
           {SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
         </select>
         <span className="sp" />
-        <button className="b2" type="button" onClick={() => setProj({ kind: 'board', gid })}>Show on big screen</button>
-        <button className="b2" type="button" onClick={() => { if (!downloadText('breach-room-results.csv', resultsCsv(D))) void copyText(resultsCsv(D)).then(() => say('Copied. Paste into Excel.')); }}><Download size={15} aria-hidden /> Download results</button>
+        <button className="b2" type="button" onClick={() => setProj({ kind: 'board', gid })} data-a="proj-results">Show on big screen</button>
+        <button className="b2" type="button" onClick={() => { if (!downloadText('breach-room-results.csv', resultsCsv(D, now))) void copyText(resultsCsv(D, now)).then(() => say('Copied. Paste into Excel.')); }}><Download size={15} aria-hidden /> Download results</button>
       </div>
-      <p className="small">Lowest final time wins. Final time is the clock plus penalties and your adjustments. Teams that didn’t close the case rank below those that did.</p>
-      <Board D={D} gid={gid} />
+      <p className="small">Score = final time ÷ the game’s par time, so teams on different games compare fairly. Lowest score wins. Ties go to fewer wrong answers, then fewer lifelines, then the earlier finish. Teams that didn’t close the case rank below those that did. ⚑ marks results worth a second look before you announce winners.</p>
+      <Board S={D} gid={gid} now={now} />
     </>
   );
 }
 
-function LogTab({ D, filter, setFilter, say }: { D: Data; filter: string; setFilter: (f: string) => void; say: (m: string) => void }) {
+function LogTab({ D, filter, setFilter }: { D: Data; filter: string; setFilter: (f: string) => void }) {
   const rows = logRows(D);
   const shown = rows.filter((l) => filter === 'all' || l.game === filter).reverse().slice(0, 400);
   return (
@@ -421,9 +512,9 @@ function LogTab({ D, filter, setFilter, say }: { D: Data; filter: string; setFil
           <option value="all">All games</option>
           {SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
         </select>
-        <span className="small">{rows.length} entries</span>
+        <span className="small">{rows.length} entries in this session</span>
         <span className="sp" />
-        <button className="b2" type="button" onClick={() => { if (!downloadText('breach-room-log.csv', logCsv(D))) void copyText(logCsv(D)).then(() => say('Copied. Paste into Excel.')); }}><Download size={15} aria-hidden /> Download log</button>
+        <button className="b2" type="button" onClick={() => downloadText('breach-room-log.csv', logCsv(D))}><Download size={15} aria-hidden /> Download log</button>
       </div>
       {shown.length ? (
         <div className="log-wrap">
@@ -432,54 +523,75 @@ function LogTab({ D, filter, setFilter, say }: { D: Data; filter: string; setFil
             <tbody>{shown.map((l, i) => <tr key={i}><td className="mono" style={{ whiteSpace: 'nowrap' }}>{clock(l.at)}</td><td>{l.team}</td><td>{l.game ? gameById(l.game)?.title : ''}</td><td>{LOG_TEXT[l.type] || l.type}</td><td>{l.detail}</td></tr>)}</tbody>
           </table>
         </div>
-      ) : <div className="empty">Every registration, code, answer, lifeline, decision and facilitator action is logged here.</div>}
+      ) : <div className="empty">Every registration, key, answer, lifeline, decision and facilitator action is logged here.</div>}
     </>
   );
 }
 
-function SetupTab({ D, base, setBase, setProj, confirm, setConfirm, say }: { D: Data; base: string; setBase: (b: string) => void; setProj: SetProj; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void }) {
+function SetupTab({ D, now, base, setBase, setProj, confirm, setConfirm, say }: { D: Data; now: number; base: string; setBase: (b: string) => void; setProj: SetProj; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void }) {
   const [draft, setDraft] = useState(base);
+  const [sname, setSname] = useState('');
+  const [busy, setBusy] = useState(false);
   const demo = getStore().mode === 'demo';
+  const url = base ? playUrl() : '';
+  const total = teamList(D).length;
   return (
     <>
-      <div className="card">
-        <h3>Game address</h3>
-        <p className="small">{demo ? 'Demo mode: there’s no public address yet. Type any web address to preview the QR codes.' : 'Where this game is hosted. QR codes point here. It fills in by itself.'}</p>
-        <form className="field-inline" onSubmit={(ev) => { ev.preventDefault(); setBase(draft.trim()); }}>
-          <input value={draft} onChange={(ev) => setDraft(ev.target.value)} placeholder="https://your-site.vercel.app" aria-label="Game address" />
-          <button className="b2" type="submit">Save</button>
-        </form>
-      </div>
-      <div className="toolbar" style={{ marginTop: 14 }}>
-        <b>QR codes and room codes</b>
-        <span className="sp" />
-        <button className="b2 pri" type="button" disabled={!base} onClick={() => window.print()}><Printer size={15} aria-hidden /> Print table cards</button>
-      </div>
-      <div className="setgrid">
-        {SCENARIOS.map((s, i) => {
-          const g = G(D, s.id), u = g.room && base ? playUrl({ room: g.room }) : '';
-          return (
-            <div key={s.id} className="card">
-              <span className="small">Game {i + 1}</span>
-              <h3>{s.title}</h3>
-              <p style={{ margin: 0 }}>Room <span className="bigroom">{g.room || '····'}</span></p>
-              {u ? <QRBox value={u} size={140} label={'QR code for ' + s.title} /> : <p className="small">Set the game address above to make QR codes.</p>}
-              <div className="acts">
-                <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'lobby', gid: s.id })}>Big screen</button>
-                {u ? <button className="b2 sm" type="button" onClick={() => { void copyText(u).then((ok) => say(ok ? 'Link copied' : 'Couldn’t copy')); }}>Copy link</button> : null}
-                <button className="b2 sm" type="button" title="Make a new room code (reprint this card)" onClick={() => { newRoomCode(D, s.id); say('New room code for ' + s.title + '. Reprint its card.'); }}><RefreshCw size={14} aria-hidden /> New code</button>
-              </div>
-            </div>
-          );
-        })}
+      <div className="setup2">
+        <div className="card">
+          <h3>Join QR code</h3>
+          <p className="small">One QR code for the whole event. Put it on every table and on the big screen.</p>
+          {url ? <QRBox value={url} size={160} label="QR code to join" /> : <p className="small">Set the game address below to make the QR code.</p>}
+          {url ? <p className="url">{url}</p> : null}
+          <div className="acts">
+            <button className="b2 pri sm" type="button" disabled={!base} onClick={() => window.print()}><Printer size={14} aria-hidden /> Print table card</button>
+            {url ? <button className="b2 sm" type="button" onClick={() => { void copyText(url).then((ok) => say(ok ? 'Link copied' : 'Couldn’t copy')); }}><Copy size={14} aria-hidden /> Copy link</button> : null}
+            <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'lobby', gid: 'all' })}>Big screen</button>
+          </div>
+          <form className="field-inline" style={{ marginTop: 12 }} onSubmit={(ev) => { ev.preventDefault(); setBase(draft.trim()); }}>
+            <input value={draft} onChange={(ev) => setDraft(ev.target.value)} placeholder="https://your-site.vercel.app" aria-label="Game address" />
+            <button className="b2" type="submit">Save address</button>
+          </form>
+          <p className="small" style={{ marginTop: 6 }}>{demo ? 'Demo mode: type any address to preview the QR code.' : 'Fills in by itself. Change it only if you use a custom domain.'}</p>
+        </div>
+        <div className="card">
+          <h3><Archive size={18} aria-hidden className="ico-in" /> Start a new session</h3>
+          <p className="small">Saves this session to History, with every team, answer, report and result, then clears the board so you can play again. Nothing is deleted. Settings and the QR code stay the same.</p>
+          <form className="field-inline" onSubmit={(ev) => { ev.preventDefault(); if (confirm !== 'newsess') { setConfirm('newsess'); return; } }}>
+            <input value={sname} onChange={(ev) => setSname(ev.target.value)} placeholder="Name this session, e.g. Session 1 · Finance · 23 Oct" maxLength={60} aria-label="Session name" data-a="sessname" />
+          </form>
+          <div className="acts" style={{ marginTop: 8 }}>
+            {confirm === 'newsess'
+              ? <><span>Save “{sname.trim() || 'this session'}” ({total} teams) and clear the board?</span>
+                <button className="b2 pri" type="button" disabled={busy} onClick={() => { setBusy(true); void newSession(D, sname, now).then(() => { setBusy(false); setConfirm(null); setSname(''); say('Session saved to History. The board is clear.'); }, () => { setBusy(false); say('Couldn’t save the session. Nothing was cleared.'); }); }} data-a="sessgo">Yes, save and start fresh</button>
+                <button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
+              : <button className="b2 pri" type="button" onClick={() => setConfirm('newsess')} data-a="sessq">Save and start a new session</button>}
+          </div>
+        </div>
       </div>
       <div className="card" style={{ marginTop: 14 }}>
-        <h3>Reset the event</h3>
-        <p className="small">Deletes every team, launch code and log entry. Download the results and log first. Room codes stay the same, so printed cards keep working.</p>
-        <div className="acts">
-          {confirm === 'reset'
-            ? <><span>Delete everything and start fresh?</span><button className="b2 warn" type="button" onClick={() => { resetEvent(D); setConfirm(null); say('Event reset'); }}>Yes, reset the event</button><button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
-            : <button className="b2 warn" type="button" onClick={() => setConfirm('reset')}>Reset event</button>}
+        <h3>Games and par times</h3>
+        <p className="small">Par is a typical good time for each game (default {fmt(DEFAULT_PAR)}). Scores compare each team’s final time with its game’s par, so the three winners are fair across games. Every team has {LIMIT_S / 60} minutes of clock time. Set par before the event, and adjust it after a dry run.</p>
+        <div className="log-wrap">
+          <table className="ttable partable">
+            <thead><tr><th>Game</th><th>Round</th><th>Par</th><th>Mode</th></tr></thead>
+            <tbody>
+              {SCENARIOS.map((s) => {
+                const g = G(D, s.id), par = parOf(D, s.id);
+                return (
+                  <tr key={s.id}>
+                    <td><b>{s.title}</b></td><td>{TRACKS[s.track]}</td>
+                    <td><div className="acts">
+                      <button className="b2 sm" type="button" onClick={() => setPar(D, s.id, par - 30)} aria-label={'Par for ' + s.title + ' down 30 seconds'}>−</button>
+                      <span className="mono">{fmt(par)}</span>
+                      <button className="b2 sm" type="button" onClick={() => setPar(D, s.id, par + 30)} aria-label={'Par for ' + s.title + ' up 30 seconds'}>+</button>
+                    </div></td>
+                    <td>{MODES[(g.mode || 'std') as 'std' | 'x'].label}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </>

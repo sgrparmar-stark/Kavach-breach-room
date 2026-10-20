@@ -1,13 +1,16 @@
 /* The data layer. Same paths in both modes:
-     games/{gid}       {state: closed|open|paused|ended, mode: std|x, insider, room, at}
-     rooms/{code}      gid                                                  room code lookup
-     teams/{uid}       {name, game, joinedAt, codeOk?, vote?, prog:{...}}  written by the team
-     control/{uid}     {launch, pause, adj, msg, inject, jump, hint, end, reveal} facilitator only
-     secrets/{uid}     {code}                                               facilitator only
+     event             {reg: open|closed}                                  event-wide registration
+     games/{gid}       {state: open|paused|ended, mode: std|x, insider, par, pz:{id:{a,b}}}
+     teams/{uid}       {name, joinedAt, codeOk?, vote?, prog:{...}}         written by the team
+     assign/{uid}      gid                                                  facilitator only: which game a team plays
+     runs/{uid}        {game, startedAt, finishedAt, ev:{id:{t,k,n,o}}}     write-once, server-timed: the official record
+     control/{uid}     {launch, pause, pz, adj, adjs, msg, inject, jump, hint, end, reveal} facilitator only
+     secrets/{uid}     {code}                                               facilitator only: the team key
      members/{team}    {meta:{name,game}, <memberUid>:{seat}}               Insider round seats
      roles/{member}    {role, team, revealed?}                              Insider round roles
      insiders/{team}   {member, seat}                                       facilitator only
-     log/{id}          {at, uid, team, game, type, detail}                  append-only            */
+     log/{id}          {at, uid, team, game, type, detail}                  append-only
+     sessions/{sid}    archived session (write-once);  sessionsIdx/{sid} {name, at, teams, podium}   */
 
 import { isFirebaseConfigured, createFirebaseStore } from './firebase';
 
@@ -33,6 +36,8 @@ export interface Store {
   remove(path: string): Promise<void>;
   attemptCode(uid: string, code: string): Promise<boolean>;
   now(): number;
+  /** A server timestamp placeholder (Firebase) or the local time (demo). */
+  ts(): Json;
   onConnected?(cb: (connected: boolean) => void): () => void;
 }
 
@@ -145,6 +150,7 @@ export function createLocalStore(): Store {
       return Promise.resolve(false);
     },
     now: () => Date.now(),
+    ts: () => Date.now(),
   };
   return store;
 }

@@ -2,11 +2,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Eye, Trophy } from 'lucide-react';
 import { gameById, graph, fmt, codeDisplay, isLockNode, MAIN_STEPS, REVEAL_ORDER, type GameNode } from '@/lib/game';
+import type { Result } from '@/lib/scoring';
 import { QRBox, Html } from '@/components/ui';
 import { playUrl } from '@/lib/nav';
 import { useNow } from '@/lib/hooks';
 import { getStore } from '@/lib/store';
-import { G, teamsOf, ranked, raceOrder, prog, tStatus, liveTime, finalOf, GS_LABEL, ST_LABEL, type Data, type Team } from './data';
+import { teamList, resultsOf, ST_LABEL, type Data, type Snap } from './data';
 
 export type ProjKind = 'lobby' | 'race' | 'board' | 'reveal';
 
@@ -17,27 +18,29 @@ export default function Projector({ D, kind, gid, base, onClose }: { D: Data; ki
     document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k);
   }, [onClose]);
   return (
-    <div className="projx" role="dialog" aria-label="Projector view">
+    <div className="projx" role="dialog" aria-label="Big screen">
+      <div className="aurora" aria-hidden="true" />
       <button type="button" className="close" onClick={onClose} data-a="unproj"><ArrowLeft size={16} aria-hidden /> Back (Esc)</button>
-      {kind === 'lobby' ? <Lobby D={D} gid={gid} base={base} /> : kind === 'race' ? <Race D={D} gid={gid} /> : kind === 'board' ? <Board D={D} gid={gid} big /> : <Reveal gid={gid} />}
+      {kind === 'lobby' ? <Lobby D={D} base={base} /> : kind === 'race' ? <Race D={D} gid={gid} /> : kind === 'board' ? <BoardBig D={D} gid={gid} /> : <Reveal gid={gid} />}
     </div>
   );
 }
 
-function Lobby({ D, gid, base }: { D: Data; gid: string; base: string }) {
-  const s = gameById(gid), g = G(D, gid), list = teamsOf(D, gid);
+function Lobby({ D, base }: { D: Data; base: string }) {
+  const list = teamList(D);
   const seen = useRef<Record<string, boolean>>({});
   const demo = getStore().mode === 'demo';
-  const url = g.room && base && !demo ? playUrl({ room: g.room }) : '';
+  const url = base && !demo ? playUrl() : '';
+  const open = D.event?.reg === 'open';
   return (
     <>
-      <h1>{s?.title}</h1>
-      <p className="sub">{g.state === 'open' ? 'Scan the QR code, or enter the room code, to register your team' : g.state === 'closed' || !g.state ? 'Registration opens soon' : GS_LABEL[g.state]}</p>
+      <h1>Kavach Breach Room</h1>
+      <p className="sub">{open ? 'Scan the QR code to register your team' : 'Registration opens soon'}</p>
       <div className="lobby">
-        {url ? <QRBox value={url} size={420} label={'QR code for ' + s?.title} /> : <div className="qrbox" style={{ padding: 40, lineHeight: 1.4, color: '#000', maxWidth: 420 }}>{demo ? 'Demo mode: teams join with the room code in another tab. Once hosted, the QR code shows here.' : 'Host the game to show its QR code here.'}</div>}
+        {url ? <QRBox value={url} size={420} label="QR code to join" /> : <div className="qrbox" style={{ padding: 40, lineHeight: 1.4, color: '#000', maxWidth: 420 }}>{demo ? 'Demo mode: teams join from another tab. Once hosted, the QR code shows here.' : 'Set the game address in Setup to show the QR code.'}</div>}
         <div className="joined">
-          <div className="roomcode"><span>Room code</span><b>{g.room || '····'}</b><small>{(base || '').replace(/^https?:\/\//, '')}</small></div>
-          <h2>Teams joined: {list.length}</h2>
+          <div className="roomcode"><span>Or open</span><b className="addr">{(base || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}/play</b></div>
+          <h2>Teams registered: {list.length}</h2>
           <div className="chips">
             {list.map((t) => { const isNew = !seen.current[t.uid]; seen.current[t.uid] = true; return <span key={t.uid} className={'chip' + (isNew ? ' new' : '')}>{t.name}</span>; })}
           </div>
@@ -49,32 +52,28 @@ function Lobby({ D, gid, base }: { D: Data; gid: string; base: string }) {
 
 function Race({ D, gid }: { D: Data; gid: string }) {
   const now = useNow(1000);
-  const list = raceOrder(D, gid, now);
+  const list = resultsOf(D, gid, now).filter((r) => r.status !== 'waiting' && r.status !== 'lobby');
   const prev = useRef<Record<string, number>>({});
   const moved: Record<string, boolean> = {};
-  list.forEach((t, i) => { const p = prev.current[t.uid]; if (p !== undefined && i < p) moved[t.uid] = true; });
-  useEffect(() => { const m: Record<string, number> = {}; list.forEach((t, i) => { m[t.uid] = i; }); prev.current = m; });
+  list.forEach((r, i) => { const p = prev.current[r.uid]; if (p !== undefined && i < p) moved[r.uid] = true; });
+  useEffect(() => { const m: Record<string, number> = {}; list.forEach((r, i) => { m[r.uid] = i; }); prev.current = m; });
   return (
     <>
       <h1>Live race</h1>
       <p className="sub">{gid === 'all' ? 'All games' : gameById(gid)?.title}</p>
-      {!list.length ? <div className="empty dark">No teams yet.</div> : (
+      {!list.length ? <div className="empty dark">No teams playing yet.</div> : (
         <ol className="race">
-          {list.map((t, i) => {
-            const p = prog(t), st = tStatus(D, t), path: string[] = p.path || [];
+          {list.map((r, i) => {
+            const node = D.teams[r.uid]?.prog?.node;
             return (
-              <li key={t.uid} className={'rr ' + st + (moved[t.uid] ? ' up' : '')}>
+              <li key={r.uid} className={'rr ' + r.status + (moved[r.uid] ? ' up' : '')}>
                 <span className="rk">{i + 1}</span>
-                <span className="nm">{t.name}{gid === 'all' ? <small>{gameById(t.game)?.title}</small> : null}</span>
-                <span className="prog" aria-label={'Progress ' + (p.solved || 0) + ' steps'}>
-                  {MAIN_STEPS.map((sId) => {
-                    const done = path.includes(sId) && (p.node !== sId || st === 'finished' || (p.solved || 0) > path.indexOf(sId));
-                    const here = p.node === sId && st !== 'finished' && st !== 'stopped';
-                    return <i key={sId} className={(done ? 'd' : '') + (here ? ' h' : '')} title={graph(t.game)[sId].label} />;
-                  })}
+                <span className="nm">{r.name}{gid === 'all' ? <small>{gameById(r.gid)?.title}</small> : null}</span>
+                <span className="prog" aria-label={'Progress ' + r.T.steps + ' steps'}>
+                  {MAIN_STEPS.map((s) => <i key={s} className={(r.T.nodes[s]?.solved ? 'd' : '') + (node === s && r.status === 'playing' ? ' h' : '')} title={graph(r.gid)[s].label} />)}
                 </span>
-                <span className="tm">{st === 'waiting' || st === 'new' ? '—' : st === 'stopped' ? 'stopped' : fmt(liveTime(D, t, now))}</span>
-                <span className={'stt ' + st}>{st === 'finished' ? (p.outcome || 'Finished') : ST_LABEL[st] || st}</span>
+                <span className="tm">{fmt(r.final)}</span>
+                <span className={'stt ' + r.status}>{r.status === 'finished' || r.status === 'stopped' ? r.outcome.label : ST_LABEL[r.status] || r.status}</span>
               </li>
             );
           })}
@@ -84,23 +83,25 @@ function Race({ D, gid }: { D: Data; gid: string }) {
   );
 }
 
-export function Board({ D, gid, big = false }: { D: Data; gid: string; big?: boolean }) {
-  const list = ranked(D, gid);
-  const head = big ? <><h1><Trophy size={40} aria-hidden /> Leaderboard</h1><p className="sub">{gid === 'all' ? 'All games' : gameById(gid)?.title}</p></> : null;
+/** Podium and table. On the big screen with all games, this is the event podium: the three winners. */
+export function Board({ S, gid, now, big = false }: { S: Snap; gid: string; now: number; big?: boolean }) {
+  const all = resultsOf(S, gid, now);
+  const list = all.filter((r) => r.status === 'finished' || r.status === 'stopped');
+  const winners = list.filter((r) => r.completed).slice(0, 3);
+  const head = big ? <><h1><Trophy size={40} aria-hidden /> {gid === 'all' ? 'The winners' : 'Leaderboard'}</h1><p className="sub">{gid === 'all' ? 'Ranked by score: final time against each game’s par time' : gameById(gid)?.title}</p></> : null;
   if (!list.length) return <>{head}<div className={'empty' + (big ? ' dark' : '')}>No finished teams yet.</div></>;
-  const top = list.slice(0, 3), order = [1, 0, 2];
+  const order = [1, 0, 2];
   return (
     <>
       {head}
       <div className="podium">
         {order.map((i) => {
-          const t: Team | undefined = top[i];
-          if (!t) return <div key={i} className="p" />;
-          const p = prog(t);
+          const r: Result | undefined = winners[i];
+          if (!r) return <div key={i} className="p" />;
           return (
-            <div key={t.uid} className={'p p' + (i + 1)}>
-              <div className="nm">{t.name}</div>
-              <div className="tm">{p.outcomeKey === 'stopped' ? 'Not finished' : fmt(finalOf(D, t))}{gid === 'all' ? ' · ' + gameById(t.game)?.title : ''}</div>
+            <div key={r.uid} className={'p p' + (i + 1)}>
+              <div className="nm">{r.name}</div>
+              <div className="tm">{fmt(r.final)} · {r.score}%{gid === 'all' ? <><br />{gameById(r.gid)?.title}</> : null}</div>
               <div className="blk">{i + 1}</div>
             </div>
           );
@@ -108,24 +109,23 @@ export function Board({ D, gid, big = false }: { D: Data; gid: string; big?: boo
       </div>
       <div className="log-wrap">
         <table className="lbtable">
-          <thead><tr><th>#</th><th>Team</th>{gid === 'all' ? <th>Game</th> : null}<th>Time</th><th>Outcome</th>{big ? null : <th>Wrong</th>}{big ? null : <th>Best streak</th>}</tr></thead>
+          <thead><tr><th>#</th><th>Team</th>{gid === 'all' ? <th>Game</th> : null}<th>Final time</th><th>Score</th><th>Outcome</th>{big ? null : <th>Wrong</th>}{big ? null : <th>Flags</th>}</tr></thead>
           <tbody>
-            {list.slice(0, big ? 12 : 200).map((t, i) => {
-              const p = prog(t);
-              return (
-                <tr key={t.uid}>
-                  <td className="rank">{i + 1}</td><td>{t.name}</td>{gid === 'all' ? <td>{gameById(t.game)?.title}</td> : null}
-                  <td className="mono">{p.outcomeKey === 'stopped' ? '—' : fmt(finalOf(D, t))}</td><td>{p.outcome}</td>
-                  {big ? null : <td className="mono">{p.wrong || 0}</td>}{big ? null : <td className="mono">{p.bestStreak || 0}</td>}
-                </tr>
-              );
-            })}
+            {list.slice(0, big ? 12 : 500).map((r, i) => (
+              <tr key={r.uid}>
+                <td className="rank">{r.completed ? i + 1 : '—'}</td><td>{r.name}</td>{gid === 'all' ? <td>{gameById(r.gid)?.title}</td> : null}
+                <td className="mono">{r.completed ? fmt(r.final) : '—'}</td><td className="mono">{r.completed ? r.score + '%' : '—'}</td><td>{r.outcome.label}</td>
+                {big ? null : <td className="mono">{r.T.wrong}</td>}
+                {big ? null : <td className="small">{r.flags.length ? <span className="flag">{r.flags.join(' · ')}</span> : ''}</td>}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
     </>
   );
 }
+function BoardBig({ D, gid }: { D: Data; gid: string }) { const now = useNow(2000); return <Board S={D} gid={gid} now={now} big />; }
 
 /* ---------- answer reveal: walk the room through each lock ---------- */
 export function AnswerKey({ n }: { n: GameNode }): ReactNode {
@@ -163,7 +163,7 @@ function Reveal({ gid }: { gid: string }) {
   const prompt = n.type === 'decision' ? n.prompt : isLockNode(n) ? n.task : '';
   return (
     <div className="reveal">
-      <p className="sub">{s?.title} · answer reveal · {i + 1} of {slides.length}</p>
+      <p className="sub">{s?.title} · answers · {i + 1} of {slides.length}</p>
       <h1>{n.label}</h1>
       <p className="rq"><Html html={prompt} /></p>
       {shown ? (

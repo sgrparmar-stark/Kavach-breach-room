@@ -4,6 +4,9 @@
 
 export type Quality = 'best' | 'ok' | 'poor';
 export type Tone = 'ok' | 'bad' | 'info';
+export type Topic = 'phishing' | 'identity' | 'data' | 'fraud' | 'response' | 'reporting' | 'physical' | 'cloud' | 'supply' | 'secrets' | 'insider' | 'social' | 'vendor' | 'leadership' | 'comms' | 'governance';
+/** Feedback for the end-of-game report: praise (good), a lesson (gap) and a practical action (act). */
+export interface Feedback { topic?: Topic; good?: string; gap?: string; act?: string }
 
 export interface SpotItem { id: string; html: string; head?: string; flag?: boolean; note?: string }
 export interface PickItem { id: string; text: string; bad?: boolean; why?: string }
@@ -11,7 +14,7 @@ export interface ChoiceOption { id: string; text: string; right?: boolean; why?:
 export interface OrderStep { id: string; text: string }
 export interface DecisionOption { id: string; text: string; q: Quality; pen?: number; note: string }
 
-interface LockBase { name: string; task: string; hint: string; debrief: string }
+interface LockBase extends Feedback { name: string; task: string; hint: string; debrief: string }
 export interface SpotLock extends LockBase { type: 'spot'; frame: 'mail' | 'chat' | 'code' | 'note'; items: SpotItem[]; chatName?: string; chatSub?: string; fileName?: string }
 /** rows: table cells; an optional last cell of 'ok' | 'bad' | 'info' colours the final column. */
 export interface CodeLock extends LockBase { type: 'code'; mask: string; answer: string; cols: string[]; rows: string[][]; pre?: string }
@@ -20,12 +23,12 @@ export interface ChoiceLock extends LockBase { type: 'choice'; options: ChoiceOp
 export interface OrderLock extends LockBase { type: 'order'; steps: OrderStep[]; shown: string[] }
 export type Lock = SpotLock | CodeLock | PickLock | ChoiceLock | OrderLock;
 
-export interface Decision { type: 'decision'; name: string; prompt: string; options: DecisionOption[] }
-export interface Inject { id: string; name: string; prompt: string; options: DecisionOption[] }
+export interface Decision extends Feedback { type: 'decision'; name: string; prompt: string; options: DecisionOption[] }
+export interface Inject { id: string; name: string; prompt: string; options: DecisionOption[]; topic?: Topic; act?: string }
 
 export interface Scenario {
   id: string;
-  track: 'core' | 'dev';
+  track: 'core' | 'dev' | 'lead';
   title: string;
   company: string;
   threat: string;
@@ -101,7 +104,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Two of the warning signs are in the sender line and the button. The other two are in what the email says and what it asks for.",
-        "debrief": "Riya clicked at 5:12 PM and typed her password into the fake page. But every NovaPay sign-in also needs an approval on her phone. So how did the attacker get past that?"
+        "debrief": "Riya clicked at 5:12 PM and typed her password into the fake page. But every NovaPay sign-in also needs an approval on her phone. So how did the attacker get past that?",
+        "topic": "phishing",
+        "good": "You spotted every sign of a lookalike phishing email.",
+        "gap": "Check the sender’s real domain and where a link really goes before you sign in anywhere.",
+        "act": "Long-press or hover over links before you tap, and report phishing to Security."
       },
       {
         "type": "code",
@@ -159,7 +166,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Riya’s phone kept buzzing with approval requests. Find the moment one finally went through for the stranger’s device.",
-        "debrief": "Thirteen approval requests buzzed while Riya was leaving, and she tapped Approve to make them stop. This is MFA fatigue. An approval you didn’t ask for is an attack in progress: deny it and report it. But the leaked file was never in Riya’s mailbox. So where did it come from?"
+        "debrief": "Thirteen approval requests buzzed while Riya was leaving, and she tapped Approve to make them stop. This is MFA fatigue. An approval you didn’t ask for is an attack in progress: deny it and report it. But the leaked file was never in Riya’s mailbox. So where did it come from?",
+        "topic": "identity",
+        "good": "You read the sign-in log like an analyst and found the takeover.",
+        "gap": "A flood of approval requests you didn’t start is an attack. Deny them and report it.",
+        "act": "Never approve a sign-in request you didn’t start. Report it at once."
       },
       {
         "type": "pick",
@@ -195,7 +206,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "For each habit, ask: who else could see the data now?",
-        "debrief": "The attacker searched Riya’s sent mail, found the “Anyone with the link” share, and downloaded all 2,000 rows. The chatbot and personal Gmail weren’t used this time, but they were open doors too."
+        "debrief": "The attacker searched Riya’s sent mail, found the “Anyone with the link” share, and downloaded all 2,000 rows. The chatbot and personal Gmail weren’t used this time, but they were open doors too.",
+        "topic": "data",
+        "good": "You knew exactly which habits put customer data out of control.",
+        "gap": "Public links, personal email and free AI tools all move data outside company control.",
+        "act": "Share files only from approved tools, and never paste customer data into public AI tools."
       },
       {
         "type": "spot",
@@ -245,7 +260,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "For each line, ask: could this lead someone to one real person?",
-        "debrief": "Names, mobile numbers, UPI IDs and account numbers identify real people, so this is a personal data breach with legal reporting duties for NovaPay and its bank clients. And never buy or download a leaked file to check it: send the link to Security."
+        "debrief": "Names, mobile numbers, UPI IDs and account numbers identify real people, so this is a personal data breach with legal reporting duties for NovaPay and its bank clients. And never buy or download a leaked file to check it: send the link to Security.",
+        "topic": "data",
+        "good": "You know what makes data personal, and that leaked files are never downloaded.",
+        "gap": "Names, phone numbers, UPI IDs and account numbers are personal data with legal duties attached.",
+        "act": "Treat any file with customer identifiers as personal data. Report leaks; never download them."
       },
       {
         "type": "order",
@@ -276,7 +295,11 @@ export const SCENARIOS: Scenario[] = [
           "investigate"
         ],
         "hint": "Nothing can start until the right people know. And you can’t judge the damage while the attacker still has access.",
-        "debrief": "Fast reporting turns a breach into a contained incident. Report early, even when you’re unsure: a false alarm costs minutes, a late one costs clients."
+        "debrief": "Fast reporting turns a breach into a contained incident. Report early, even when you’re unsure: a false alarm costs minutes, a late one costs clients.",
+        "topic": "response",
+        "good": "You put the incident response in the right order.",
+        "gap": "Report first, cut the attacker off, then investigate and inform. The order matters.",
+        "act": "Remember the first two steps of any incident: report, then contain."
       },
       {
         "type": "choice",
@@ -306,7 +329,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "The safe option lets NovaPay decide exactly who can open the file, for how long, and see who did.",
-        "debrief": "Approved tools with named access, an expiry date and logging keep customer data in NovaPay’s control. If something goes wrong, the logs show exactly who opened what."
+        "debrief": "Approved tools with named access, an expiry date and logging keep customer data in NovaPay’s control. If something goes wrong, the logs show exactly who opened what.",
+        "topic": "data",
+        "good": "You chose the sharing method that keeps data controlled and traceable.",
+        "gap": "Approved tools with named access, an expiry date and logging are the safe way to share customer data.",
+        "act": "Set an expiry date on every external share you create."
       }
     ],
     "lessons": [
@@ -332,16 +359,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "mail",
           "text": "Email the security mailbox and keep digging yourself.",
           "q": "ok",
-          "pen": 60,
           "note": "An email may sit unread all weekend. For a live incident, call. +60 seconds."
         },
         {
           "id": "wait",
           "text": "Wait until Monday. It might be a false alarm.",
           "q": "poor",
-          "note": "The attacker had the whole weekend. Now you have to clean up the damage."
+          "note": "The attacker had the whole weekend. Now you have to clean up the damage. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "response",
+      "good": "You escalated a live incident by phone, straight away.",
+      "gap": "A live incident needs people on it now. Call the incident line; don’t wait or rely on email.",
+      "act": "Save the security incident number in your phone today."
     },
     "detour": {
       "type": "pick",
@@ -370,7 +400,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Look for things Riya didn’t do herself.",
-      "debrief": "Both are now removed and the clients warned. Waiting cost a weekend of exposure."
+      "debrief": "Both are now removed and the clients warned. Waiting cost a weekend of exposure.",
+      "topic": "response",
+      "good": "You knew the signs of what an attacker does in a mailbox.",
+      "gap": "Delay gives attackers time to plant forwarding rules and send fraud from a trusted mailbox.",
+      "act": "After any account compromise, ask Security to check mail rules and sent items."
     },
     "track": "core"
   },
@@ -431,7 +465,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for: who it claims to be, what you’re told not to do, where the money goes, and how fast it must happen.",
-        "debrief": "Neha had doubts. Then her phone rang, and it was Arjun’s voice, calm and familiar, asking if the payment was done. What should she have done next?"
+        "debrief": "Neha had doubts. Then her phone rang, and it was Arjun’s voice, calm and familiar, asking if the payment was done. What should she have done next?",
+        "topic": "social",
+        "good": "You caught the new-number, secrecy and urgency tricks.",
+        "gap": "A new number, secrecy and pressure to skip approvals together mean stop and verify.",
+        "act": "Verify any unusual request from a senior person on a number you already have."
       },
       {
         "type": "choice",
@@ -460,7 +498,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Every option except one keeps the conversation on a channel the fraudster controls.",
-        "debrief": "Voices can now be cloned from a few seconds of a podcast or earnings call. The only reliable check is a channel you start yourself: hang up and call back on a number you already trust. Neha didn’t. Then a request arrived to change Brightline’s bank account."
+        "debrief": "Voices can now be cloned from a few seconds of a podcast or earnings call. The only reliable check is a channel you start yourself: hang up and call back on a number you already trust. Neha didn’t. Then a request arrived to change Brightline’s bank account.",
+        "topic": "social",
+        "good": "You knew a familiar voice is no longer proof.",
+        "gap": "Voices can be cloned. Hang up and call back on a number you already trust.",
+        "act": "Use a call-back rule for every payment request, whoever is calling."
       },
       {
         "type": "pick",
@@ -502,7 +544,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Anything the fraudster sent can be faked. Look for checks that use information they don’t control.",
-        "debrief": "These checks exist for exactly this moment. Neha knew them, but the “CFO” was about to turn up the pressure."
+        "debrief": "These checks exist for exactly this moment. Neha knew them, but the “CFO” was about to turn up the pressure.",
+        "topic": "fraud",
+        "good": "You knew the three checks that stop payment diversion.",
+        "gap": "Bank detail changes need a call-back on a known number, a second approver and a name check.",
+        "act": "Never change vendor bank details without a call-back and a second approval."
       },
       {
         "type": "code",
@@ -550,7 +596,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "The vendor name looks right on every line. Check the account numbers.",
-        "debrief": "The name on the payment said Brightline, but the account was a mule account opened two weeks ago. Banks pay by account number, not by name. The money is moving. What now?"
+        "debrief": "The name on the payment said Brightline, but the account was a mule account opened two weeks ago. Banks pay by account number, not by name. The money is moving. What now?",
+        "topic": "fraud",
+        "good": "You followed the money to the mule account.",
+        "gap": "Banks pay by account number, not by name. Check every account against the vendor master.",
+        "act": "Check any new beneficiary account against the vendor master before paying."
       },
       {
         "type": "order",
@@ -581,7 +631,11 @@ export const SCENARIOS: Scenario[] = [
           "evid"
         ],
         "hint": "Money moves fast between mule accounts, so the first call is about stopping it. A complaint needs proof.",
-        "debrief": "The first hour after a fraudulent transfer is when a bank is most likely to freeze it. Speed and evidence get money back; a process fix stops it happening twice."
+        "debrief": "The first hour after a fraudulent transfer is when a bank is most likely to freeze it. Speed and evidence get money back; a process fix stops it happening twice.",
+        "topic": "reporting",
+        "good": "You knew the order that gives the best chance of getting money back.",
+        "gap": "Alert the bank and Security at once, save evidence, report on 1930 or cybercrime.gov.in, then fix the gap.",
+        "act": "Report payment fraud within the hour: bank, Security, then 1930."
       },
       {
         "type": "spot",
@@ -627,7 +681,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for details that tell a stranger who pays whom, who to target, how Arjun sounds, and when he’s hard to reach.",
-        "debrief": "Each detail was harmless on its own. Together they gave the fraudsters the vendor, the target, the voice and the excuse. Think before you post about vendors, colleagues, travel and recordings."
+        "debrief": "Each detail was harmless on its own. Together they gave the fraudsters the vendor, the target, the voice and the excuse. Think before you post about vendors, colleagues, travel and recordings.",
+        "topic": "social",
+        "good": "You spotted how public posts feed fraudsters’ research.",
+        "gap": "Posts about vendors, colleagues, travel and recordings give fraudsters what they need.",
+        "act": "Before posting about work, ask: could this help someone impersonate us?"
       }
     ],
     "lessons": [
@@ -653,16 +711,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "pair",
           "text": "Ask a colleague to approve it quickly so it isn’t just her decision.",
           "q": "ok",
-          "pen": 60,
           "note": "Two people fooled is still fraud. Verification has to happen on a separate, trusted channel. +60 seconds."
         },
         {
           "id": "pay",
           "text": "Pay now and avoid getting into trouble.",
           "q": "poor",
-          "note": "The money has gone. Now it’s a race to recover it."
+          "note": "The money has gone. Now it’s a race to recover it. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "fraud",
+      "good": "You held the line on process under pressure from the top.",
+      "gap": "Pressure and anger are tactics. Process exists for exactly these moments.",
+      "act": "Escalate any pressure to skip controls to your manager or Security."
     },
     "detour": {
       "type": "pick",
@@ -696,7 +757,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "The bank needs facts about the payment, never your secrets.",
-      "debrief": "The bank froze part of the money in the mule account. Speed is everything in a recall."
+      "debrief": "The bank froze part of the money in the mule account. Speed is everything in a recall.",
+      "topic": "response",
+      "good": "You knew what the bank needs to recall a payment.",
+      "gap": "To recall a fraudulent payment, the bank needs the UTR, amount, time and beneficiary details, fast.",
+      "act": "Keep your bank’s fraud desk number and the 1930 helpline handy."
     },
     "track": "core"
   },
@@ -744,7 +809,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look at the end of each file name, and read the sender domains letter by letter.",
-        "debrief": "Two people opened Payroll_Revision.xlsm. One laptop blocked the macro. The other didn’t. Which laptop let the attacker in?"
+        "debrief": "Two people opened Payroll_Revision.xlsm. One laptop blocked the macro. The other didn’t. Which laptop let the attacker in?",
+        "topic": "phishing",
+        "good": "You knew which attachments can run code.",
+        "gap": "Double extensions, macros and scripts inside zips can run code. Read the whole file name.",
+        "act": "Never click “Enable Content” on an unexpected document. Report it instead."
       },
       {
         "type": "code",
@@ -796,7 +865,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Encryption is the last step of the attack, not the first. Look for where it began days earlier.",
-        "debrief": "The attacker got in on Friday at 6:42 PM and spent the weekend quietly creating an admin account before encrypting on Monday morning. Now: how do you get the files back?"
+        "debrief": "The attacker got in on Friday at 6:42 PM and spent the weekend quietly creating an admin account before encrypting on Monday morning. Now: how do you get the files back?",
+        "topic": "response",
+        "good": "You traced the attack back to the first infected laptop.",
+        "gap": "Attackers often wait quietly for days before encrypting. Early warning signs matter.",
+        "act": "Report odd pop-ups or blocked macros to IT, even when nothing seems broken."
       },
       {
         "type": "spot",
@@ -842,7 +915,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for lines that rush you, scare you, or try to stop you asking for help.",
-        "debrief": "The note is built to rush and isolate you. Paying funds the next attack and doesn’t guarantee a working key. Never contact the attackers yourself: leave that to Security and law enforcement."
+        "debrief": "The note is built to rush and isolate you. Paying funds the next attack and doesn’t guarantee a working key. Never contact the attackers yourself: leave that to Security and law enforcement.",
+        "topic": "response",
+        "good": "You saw through every pressure tactic in the note.",
+        "gap": "Ransom notes are built to rush and isolate you. Never contact the attackers or follow their instructions.",
+        "act": "Ransom note on screen? Don’t engage, disconnect, and report from another device."
       },
       {
         "type": "choice",
@@ -871,7 +948,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "You need a copy the attacker could not touch, and the attacker must be gone first.",
-        "debrief": "Offline or immutable backups are the ones ransomware can’t reach. And because the attacker had been inside since Friday, the backdoor account had to go first, or they’d simply come back."
+        "debrief": "Offline or immutable backups are the ones ransomware can’t reach. And because the attacker had been inside since Friday, the backdoor account had to go first, or they’d simply come back.",
+        "topic": "response",
+        "good": "You chose the only safe way back: remove the attacker, then restore offline backups.",
+        "gap": "Remove the attacker first, then restore from offline or immutable backups.",
+        "act": "Ask your team whether critical data has an offline backup."
       },
       {
         "type": "pick",
@@ -913,7 +994,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Think about who has a legal or contractual right to know quickly.",
-        "debrief": "Reporting clocks start when you notice an incident, not when you finish investigating. That’s why the first call to Security matters so much."
+        "debrief": "Reporting clocks start when you notice an incident, not when you finish investigating. That’s why the first call to Security matters so much.",
+        "topic": "reporting",
+        "good": "You knew who must be told, and how fast.",
+        "gap": "CERT-In within 6 hours, the regulator and bank clients as required. Never the attackers or social media.",
+        "act": "Know who in your team owns regulatory and client notifications."
       },
       {
         "type": "order",
@@ -944,7 +1029,11 @@ export const SCENARIOS: Scenario[] = [
           "iso"
         ],
         "hint": "Stop the spread first: every second connected means more encrypted files.",
-        "debrief": "Disconnecting stops the spread, and leaving the machine on keeps evidence in memory. Then report, evict, and only then restore."
+        "debrief": "Disconnecting stops the spread, and leaving the machine on keeps evidence in memory. Then report, evict, and only then restore.",
+        "topic": "response",
+        "good": "You know the ransomware playbook by heart.",
+        "gap": "Disconnect, report from another device, let Security remove the attacker, then restore.",
+        "act": "Keep the four ransomware steps somewhere you’ll see them."
       }
     ],
     "lessons": [
@@ -970,16 +1059,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "off",
           "text": "Switch everything off immediately.",
           "q": "ok",
-          "pen": 60,
           "note": "It stops the spread but wipes the evidence held in memory, which slows the investigation. +60 seconds."
         },
         {
           "id": "work",
           "text": "Keep working on the laptops that seem fine. It’s IT’s problem.",
           "q": "poor",
-          "note": "Connected laptops kept spreading the infection."
+          "note": "Connected laptops kept spreading the infection. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "response",
+      "good": "You contained the spread and kept the evidence.",
+      "gap": "Disconnect from the network but leave machines on. Switching off destroys evidence; ignoring it spreads damage.",
+      "act": "Learn how to take your laptop off the network in one step."
     },
     "detour": {
       "type": "pick",
@@ -1008,7 +1100,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Cut the paths it travels on and the account it uses.",
-      "debrief": "The spread stopped, but more data needs restoring than if you’d isolated earlier."
+      "debrief": "The spread stopped, but more data needs restoring than if you’d isolated earlier.",
+      "topic": "response",
+      "good": "You knew how to stop the spread.",
+      "gap": "Cut access to shared drives and disable rogue accounts. Local scans and renaming files don’t help.",
+      "act": "Report any sign of spreading at once, so Security can cut access."
     },
     "track": "core"
   },
@@ -1056,7 +1152,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Which permissions let a lot of data leave in one go?",
-        "debrief": "All three were still open on his second-last day. DLP did see something that night. When did the pricing sheet leave?"
+        "debrief": "All three were still open on his second-last day. DLP did see something that night. When did the pricing sheet leave?",
+        "topic": "insider",
+        "good": "You knew which access to cut on resignation day.",
+        "gap": "Bulk exports, USB storage and personal cloud access should shrink the day someone resigns.",
+        "act": "Managers: review a leaver’s access on the day they resign, not their last day."
       },
       {
         "type": "code",
@@ -1101,7 +1201,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Files can be renamed. Sizes rarely change.",
-        "debrief": "Renamed to holiday_photos.zip and sent at 10:47 PM. The USB copy that night took the merchant list too. A colleague had actually seen something that evening."
+        "debrief": "Renamed to holiday_photos.zip and sent at 10:47 PM. The USB copy that night took the merchant list too. A colleague had actually seen something that evening.",
+        "topic": "insider",
+        "good": "You found the renamed file leaving at night.",
+        "gap": "Renamed files and late-night uploads are classic signs of data theft. DLP overrides need review.",
+        "act": "Report DLP alerts or overrides you don’t recognise to Security."
       },
       {
         "type": "choice",
@@ -1130,7 +1234,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Who can actually check, and act, without making a scene?",
-        "debrief": "Reporting isn’t accusing. Security can check quietly and the person may have a good reason. Ananya’s instinct was right; she just didn’t tell anyone."
+        "debrief": "Reporting isn’t accusing. Security can check quietly and the person may have a good reason. Ananya’s instinct was right; she just didn’t tell anyone.",
+        "topic": "insider",
+        "good": "You know that reporting isn’t accusing.",
+        "gap": "If you see something odd, tell your manager or Security quietly. Don’t confront or gossip.",
+        "act": "Report suspicious behaviour quietly to your manager or Security."
       },
       {
         "type": "spot",
@@ -1187,7 +1295,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "For each line, ask: does this take company information outside the company?",
-        "debrief": "Client lists, pricing models, emails and templates made at work belong to the company. Taking them breaks policy, and Legal can act on it."
+        "debrief": "Client lists, pricing models, emails and templates made at work belong to the company. Taking them breaks policy, and Legal can act on it.",
+        "topic": "data",
+        "good": "You knew that work created on the job belongs to the company.",
+        "gap": "Client lists, pricing models and work email stay with the company, whoever built them.",
+        "act": "When you leave, hand over your files. Never copy company data to personal accounts."
       },
       {
         "type": "pick",
@@ -1228,7 +1340,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for access that doesn’t depend on his own network ID.",
-        "debrief": "Shared passwords and personal phones survive offboarding. Change shared passwords whenever someone who knew them leaves, and keep work data in a work profile IT can wipe."
+        "debrief": "Shared passwords and personal phones survive offboarding. Change shared passwords whenever someone who knew them leaves, and keep work data in a work profile IT can wipe.",
+        "topic": "identity",
+        "good": "You found the access that survives offboarding.",
+        "gap": "Shared passwords and data on personal phones survive when an ID is disabled.",
+        "act": "Change shared passwords whenever someone who knew them leaves."
       },
       {
         "type": "order",
@@ -1259,7 +1375,11 @@ export const SCENARIOS: Scenario[] = [
           "cut"
         ],
         "hint": "Nobody can reduce access they don’t know needs reducing.",
-        "debrief": "Most insider data loss happens in the weeks around resignation. Joining up HR, IT and Security closes the gap."
+        "debrief": "Most insider data loss happens in the weeks around resignation. Joining up HR, IT and Security closes the gap.",
+        "topic": "insider",
+        "good": "You know the leaver process from resignation to last day.",
+        "gap": "HR, IT and Security must act together from resignation day.",
+        "act": "Make sure HR tells IT and Security the day someone resigns."
       }
     ],
     "lessons": [
@@ -1285,16 +1405,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "wa",
           "text": "Message Vikram on WhatsApp and ask him to delete it.",
           "q": "ok",
-          "pen": 60,
           "note": "It tips him off and proves nothing. Leave contact to Legal. +60 seconds."
         },
         {
           "id": "wipe",
           "text": "Wipe his laptop and give it to the next joiner.",
           "q": "poor",
-          "note": "The laptop held the evidence. Now you need other sources."
+          "note": "The laptop held the evidence. Now you need other sources. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "response",
+      "good": "You protected the evidence and brought in the right people.",
+      "gap": "Keep devices and logs exactly as they are, and involve Security and Legal. Don’t wipe or contact the person.",
+      "act": "Never wipe a leaver’s device until Security says so."
     },
     "detour": {
       "type": "pick",
@@ -1322,7 +1445,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Think about what is recorded centrally, not on the device.",
-      "debrief": "The central logs saved the case. Always preserve a leaver’s device until Security clears it."
+      "debrief": "The central logs saved the case. Always preserve a leaver’s device until Security clears it.",
+      "topic": "response",
+      "good": "You knew where evidence survives.",
+      "gap": "Central logs survive a wiped laptop. Wiping too early destroys everything else.",
+      "act": "Ask IT to hold leavers’ devices for a set period before reuse."
     },
     "track": "core"
   },
@@ -1361,7 +1488,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "The right answer gets the experts involved fast and keeps her on your side.",
-        "debrief": "Security confirmed it within minutes: the logs really are public. Now work out how the code made that happen."
+        "debrief": "Security confirmed it within minutes: the logs really are public. Now work out how the code made that happen.",
+        "topic": "response",
+        "good": "You escalated the report fast and kept the researcher on side.",
+        "gap": "Treat outside reports as a gift. Forward them to Security at once and thank the sender.",
+        "act": "Know where to send security reports: the Security team’s mailbox or number."
       },
       {
         "type": "spot",
@@ -1416,7 +1547,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for secrets, personal data, and who is allowed to read the files.",
-        "debrief": "The code wrote each log as public. But the bucket itself was also opened up. When did that happen?"
+        "debrief": "The code wrote each log as public. But the bucket itself was also opened up. When did that happen?",
+        "topic": "secrets",
+        "good": "You found the key, the password, the personal data and the public setting.",
+        "gap": "Never put keys or passwords in code, and never make customer data public.",
+        "act": "Use the secrets manager for every key and password, even in tests."
       },
       {
         "type": "code",
@@ -1468,7 +1603,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "“*” means everyone. The block switch went off after the policy changed.",
-        "debrief": "A developer opened the bucket “just to test” at 4:38 PM and forgot. Overnight, someone listed it and downloaded 1,842 files. Time to close it properly."
+        "debrief": "A developer opened the bucket “just to test” at 4:38 PM and forgot. Overnight, someone listed it and downloaded 1,842 files. Time to close it properly.",
+        "topic": "cloud",
+        "good": "You read the audit trail and found the moment it went public.",
+        "gap": "“Just to test” changes get forgotten. Public access must stay blocked.",
+        "act": "Never switch off public-access blocking, even briefly, without a change ticket."
       },
       {
         "type": "pick",
@@ -1507,7 +1646,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Hiding a problem is not the same as fixing it.",
-        "debrief": "Public access blocked, key revoked, secrets moved. Now handle the incident itself."
+        "debrief": "Public access blocked, key revoked, secrets moved. Now handle the incident itself.",
+        "topic": "cloud",
+        "good": "You picked the fixes that actually close the hole.",
+        "gap": "Block public access, revoke leaked keys and move secrets to a vault. Renaming and deleting commits don’t help.",
+        "act": "Revoke any key that has ever been in code; don’t just delete it."
       },
       {
         "type": "order",
@@ -1538,7 +1681,11 @@ export const SCENARIOS: Scenario[] = [
           "block"
         ],
         "hint": "Security leads, then close the door anyone on the internet can use, then the key only one attacker might hold.",
-        "debrief": "Security then handles notifications in parallel: CERT-In expects incidents reported within 6 hours, and bank clients have their own contractual timelines."
+        "debrief": "Security then handles notifications in parallel: CERT-In expects incidents reported within 6 hours, and bank clients have their own contractual timelines.",
+        "topic": "reporting",
+        "good": "You put the cloud incident response in order.",
+        "gap": "Report, block, revoke, then review what was downloaded. CERT-In’s 6-hour clock starts early.",
+        "act": "Report cloud exposures to Security straight away."
       },
       {
         "type": "choice",
@@ -1568,7 +1715,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "If this test data leaked, who would be harmed?",
-        "debrief": "Masked or synthetic data keeps tests realistic without putting real people at risk. Production data stays in production."
+        "debrief": "Masked or synthetic data keeps tests realistic without putting real people at risk. Production data stays in production.",
+        "topic": "data",
+        "good": "You chose test data that puts no one at risk.",
+        "gap": "Test with masked or synthetic data. Real customer data never belongs in test systems.",
+        "act": "Ask for masked test data before you build or test anything."
       }
     ],
     "lessons": [
@@ -1594,16 +1745,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "later",
           "text": "Make it private, then tell Security after the morning stand-up.",
           "q": "ok",
-          "pen": 60,
           "note": "Security needed to know at once: the notification clock is already running. +60 seconds."
         },
         {
           "id": "del",
           "text": "Delete the bucket and its logs so the problem disappears.",
           "q": "poor",
-          "note": "The access logs went with it. Now you have to find out what leaked another way."
+          "note": "The access logs went with it. Now you have to find out what leaked another way. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "cloud",
+      "good": "You closed the hole and kept the evidence.",
+      "gap": "Block public access, but keep the bucket and its logs for the investigation. Deleting destroys evidence.",
+      "act": "Contain first, but never delete evidence."
     },
     "detour": {
       "type": "pick",
@@ -1630,7 +1784,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Logs that were stored somewhere else survive a deletion.",
-      "debrief": "Logs kept outside the bucket survived. Keep logs separate from the data they describe."
+      "debrief": "Logs kept outside the bucket survived. Keep logs separate from the data they describe.",
+      "topic": "response",
+      "good": "You knew where the evidence still lives.",
+      "gap": "Deleting the bucket deleted its logs. Only separate logging survives.",
+      "act": "Make sure data-access logging is on for any bucket with customer data."
     },
     "track": "core"
   },
@@ -1669,7 +1827,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Which check uses information the caller doesn’t control?",
-        "debrief": "Reception added him without checking. On Thursday afternoon, a man in a CoolAir uniform walked in. Here’s what CCTV saw."
+        "debrief": "Reception added him without checking. On Thursday afternoon, a man in a CoolAir uniform walked in. Here’s what CCTV saw.",
+        "topic": "social",
+        "good": "You verified the visit through a channel you trust.",
+        "gap": "Callers can know names and floors. Confirm with the person through the directory, not the caller’s number.",
+        "act": "Check unexpected visits with the host employee before adding anyone to the list."
       },
       {
         "type": "pick",
@@ -1705,7 +1867,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Which moments removed a barrier the office already had?",
-        "debrief": "He got in, wandered, and found an open room. Before leaving, he also stuck posters in the pantry. Here’s one."
+        "debrief": "He got in, wandered, and found an open room. Before leaving, he also stuck posters in the pantry. Here’s one.",
+        "topic": "physical",
+        "good": "You spotted every gap that let the stranger in and around.",
+        "gap": "Holding badge doors, unescorted visitors and propped doors undo physical security.",
+        "act": "Don’t hold badge doors for people you don’t know, and escort every visitor."
       },
       {
         "type": "spot",
@@ -1751,7 +1917,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "What does the QR ask for, where does it go, how fast, and where was the poster put?",
-        "debrief": "Six people scanned it before lunch, and two typed in their Helix email and password."
+        "debrief": "Six people scanned it before lunch, and two typed in their Helix email and password.",
+        "topic": "phishing",
+        "good": "You saw through the QR-code phishing poster.",
+        "gap": "QR codes hide links. A voucher never needs your work password.",
+        "act": "Never sign in with your work password from a QR code on a poster."
       },
       {
         "type": "code",
@@ -1803,7 +1973,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Being denied doesn’t mean being stopped.",
-        "debrief": "Denied at 2:38 PM, he walked through the propped door at 2:41 PM and plugged in the device. It sat on the network overnight. And the device wasn’t the only thing he could walk away with."
+        "debrief": "Denied at 2:38 PM, he walked through the propped door at 2:41 PM and plugged in the device. It sat on the network overnight. And the device wasn’t the only thing he could walk away with.",
+        "topic": "physical",
+        "good": "You read the door log and found the propped-door entry.",
+        "gap": "A propped door bypasses every badge reader.",
+        "act": "Close propped doors and report them to Facilities."
       },
       {
         "type": "pick",
@@ -1845,7 +2019,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for information he didn’t need a password to see.",
-        "debrief": "Doors are only one layer. A clear desk and a locked screen leave a visitor nothing to collect."
+        "debrief": "Doors are only one layer. A clear desk and a locked screen leave a visitor nothing to collect.",
+        "topic": "physical",
+        "good": "You knew what a clear desk protects.",
+        "gap": "Sticky-note passwords, printouts and whiteboards are free for any visitor.",
+        "act": "Clear your desk, collect printouts and wipe whiteboards."
       },
       {
         "type": "order",
@@ -1876,7 +2054,11 @@ export const SCENARIOS: Scenario[] = [
           "leave"
         ],
         "hint": "Your first move is not touching anything.",
-        "debrief": "Physical access beats every firewall. Challenging politely and escorting visitors are security controls, not rudeness."
+        "debrief": "Physical access beats every firewall. Challenging politely and escorting visitors are security controls, not rudeness.",
+        "topic": "physical",
+        "good": "You know what to do with an unknown device.",
+        "gap": "Don’t touch an unknown device. Call Security and let them disable the port and keep it as evidence.",
+        "act": "Unknown device? Don’t unplug it. Call Security."
       }
     ],
     "lessons": [
@@ -1902,16 +2084,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "next",
           "text": "Ask them to change their passwords next time they log in.",
           "q": "ok",
-          "pen": 60,
           "note": "Hours of exposure for no reason. Reset immediately. +60 seconds."
         },
         {
           "id": "tear",
           "text": "Tear the poster down and say nothing.",
           "q": "poor",
-          "note": "The stolen passwords still work. Someone is about to use one."
+          "note": "The stolen passwords still work. Someone is about to use one. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "identity",
+      "good": "You acted fast on the stolen passwords.",
+      "gap": "If someone types their password into a fake page: report it, reset it now, and check their sign-ins.",
+      "act": "If you ever enter your password on a fake page, report it and reset at once."
     },
     "detour": {
       "type": "pick",
@@ -1939,7 +2124,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Remove the attacker’s access, and the way they could get it back.",
-      "debrief": "Access cut and the rogue MFA device removed. A poster cost an account takeover."
+      "debrief": "Access cut and the rogue MFA device removed. A poster cost an account takeover.",
+      "topic": "identity",
+      "good": "You knew how to lock an attacker out of an account.",
+      "gap": "Sign the account out everywhere, reset the password and remove any new MFA device.",
+      "act": "Report unexpected sign-in alerts at once."
     },
     "track": "core"
   },
@@ -2000,7 +2189,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for misspelled names, code from unusual places, versions that aren’t pinned, and scripts that run on install.",
-        "debrief": "The typosquatted package ran its own install script inside the build. But what did it take, and when?"
+        "debrief": "The typosquatted package ran its own install script inside the build. But what did it take, and when?",
+        "topic": "supply",
+        "good": "You spotted the install script, the typosquat, the Git dependency and the floating version.",
+        "gap": "Typosquats, install scripts, Git dependencies and “latest” versions let attackers into builds.",
+        "act": "Check package names letter by letter before you add them."
       },
       {
         "type": "code",
@@ -2052,7 +2245,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Reading the secrets isn’t the same as sending them. Look for data leaving the server.",
-        "debrief": "At 2:10:34 AM the package posted the build’s environment variables, including deploy keys, to the attacker. Tests passed and the deploy looked normal."
+        "debrief": "At 2:10:34 AM the package posted the build’s environment variables, including deploy keys, to the attacker. Tests passed and the deploy looked normal.",
+        "topic": "secrets",
+        "good": "You found the exact second the secrets left.",
+        "gap": "Anything in the build environment can be stolen by a malicious package.",
+        "act": "Give builds only the secrets they need, scoped and short-lived."
       },
       {
         "type": "spot",
@@ -2099,7 +2296,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for lines that send data out, bring the attacker back later, or cover tracks.",
-        "debrief": "The script stole the build’s secrets and the npm token, planted a job to come back every 30 minutes, then deleted itself. Deleting the package isn’t enough: rebuild the server from clean."
+        "debrief": "The script stole the build’s secrets and the npm token, planted a job to come back every 30 minutes, then deleted itself. Deleting the package isn’t enough: rebuild the server from clean.",
+        "topic": "supply",
+        "good": "You read the script and found the theft, the persistence and the cover-up.",
+        "gap": "Malicious install scripts steal secrets, come back and hide. Rebuild from clean.",
+        "act": "Rebuild compromised servers from clean images; don’t just remove the package."
       },
       {
         "type": "pick",
@@ -2137,7 +2338,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Anything secret that the build could read counts as stolen.",
-        "debrief": "If a secret was in the build’s environment, assume the attacker has it. Rotate first, investigate in parallel."
+        "debrief": "If a secret was in the build’s environment, assume the attacker has it. Rotate first, investigate in parallel.",
+        "topic": "secrets",
+        "good": "You knew which secrets to rotate first.",
+        "gap": "Deploy keys, publish tokens and database passwords in the build must all be rotated.",
+        "act": "Rotate every secret a compromised build could read."
       },
       {
         "type": "order",
@@ -2168,7 +2373,11 @@ export const SCENARIOS: Scenario[] = [
           "rot"
         ],
         "hint": "Contain, then make stolen secrets useless, then clean up, then prevent.",
-        "debrief": "Supply-chain attacks hit everyone who trusts the package. Approved registries and pinned versions are the guard rails."
+        "debrief": "Supply-chain attacks hit everyone who trusts the package. Approved registries and pinned versions are the guard rails.",
+        "topic": "response",
+        "good": "You put the supply-chain response in order.",
+        "gap": "Stop and block, rotate secrets, rebuild clean, then prevent a repeat.",
+        "act": "Know your pipeline’s stop button and who can press it."
       },
       {
         "type": "choice",
@@ -2198,7 +2407,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "You want the exact versions you reviewed, no surprise scripts, and a trusted source.",
-        "debrief": "A lockfile, disabled install scripts and an approved registry turn a supply-chain attack into a failed build instead of a breach."
+        "debrief": "A lockfile, disabled install scripts and an approved registry turn a supply-chain attack into a failed build instead of a breach.",
+        "topic": "supply",
+        "good": "You chose the install setup that blocks this attack.",
+        "gap": "Use npm ci with a committed lockfile, no install scripts and an approved registry.",
+        "act": "Use npm ci --ignore-scripts and an approved registry in CI."
       }
     ],
     "lessons": [
@@ -2223,16 +2436,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "ship",
           "text": "Remove the package, ship at 11, and rotate secrets next sprint.",
           "q": "ok",
-          "pen": 60,
           "note": "Stolen secrets keep working until they’re rotated. That’s days of open access. +60 seconds."
         },
         {
           "id": "ignore",
           "text": "It only ran in staging. Ship as planned.",
           "q": "poor",
-          "note": "The same pipeline holds the production deploy key. Now check what the attacker did with it."
+          "note": "The same pipeline holds the production deploy key. Now check what the attacker did with it. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "response",
+      "good": "You stopped the release and treated every secret as stolen.",
+      "gap": "Never ship from a compromised pipeline. Stop, tell Security, rotate everything.",
+      "act": "Stop the pipeline when compromise is suspected, even on deadline day."
     },
     "detour": {
       "type": "pick",
@@ -2260,7 +2476,11 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Look for activity that nobody scheduled and nobody on the team did.",
-      "debrief": "Backdoor account removed and the key rotated. Shipping on time nearly cost you production."
+      "debrief": "Backdoor account removed and the key rotated. Shipping on time nearly cost you production.",
+      "topic": "cloud",
+      "good": "You spotted the signs of the key being used.",
+      "gap": "New admin users and calls from unexpected countries mean the attacker is in production.",
+      "act": "Alert on new admin users and unusual API locations."
     }
   },
   {
@@ -2320,7 +2540,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Look for secrets, things that expose secrets, things that trust everyone, and where the code went.",
-        "debrief": "The key went public on Friday at 6:02 PM. How long before someone used it?"
+        "debrief": "The key went public on Friday at 6:02 PM. How long before someone used it?",
+        "topic": "secrets",
+        "good": "You found the key, the debug endpoint, the open CORS and the public fork.",
+        "gap": "Keys in code, debug endpoints, open CORS and public forks each expose the company.",
+        "act": "Run secret scanning before every push."
       },
       {
         "type": "code",
@@ -2366,7 +2590,11 @@ export const SCENARIOS: Scenario[] = [
           ]
         ],
         "hint": "Cloning the repo isn’t using the key. Look for the first call made with it.",
-        "debrief": "14 minutes from push to abuse. Automated bots find leaked keys faster than anyone notices the mistake."
+        "debrief": "14 minutes from push to abuse. Automated bots find leaked keys faster than anyone notices the mistake.",
+        "topic": "cloud",
+        "good": "You saw how fast bots use a leaked key.",
+        "gap": "Leaked keys are used within minutes. Revoke at once.",
+        "act": "Revoke a leaked key immediately, before you investigate."
       },
       {
         "type": "spot",
@@ -2417,7 +2645,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Rotate anything that would let someone sign in, sign requests, or pretend to be you.",
-        "debrief": "Everything in the environment is now public, so all four secrets need rotating today. Debug endpoints never belong in code that ships."
+        "debrief": "Everything in the environment is now public, so all four secrets need rotating today. Debug endpoints never belong in code that ships.",
+        "topic": "secrets",
+        "good": "You knew which exposed values must be rotated.",
+        "gap": "Anything a debug endpoint exposed must be rotated, and debug endpoints never ship.",
+        "act": "Remove debug endpoints before code reaches production."
       },
       {
         "type": "pick",
@@ -2455,7 +2687,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Choose the controls that work even when someone is in a hurry.",
-        "debrief": "Good controls make the safe path the easy path. Push protection and a vault would have made this commit impossible."
+        "debrief": "Good controls make the safe path the easy path. Push protection and a vault would have made this commit impossible.",
+        "topic": "secrets",
+        "good": "You picked the controls that make the safe path easy.",
+        "gap": "Push protection, a secrets vault and blocked personal forks stop this kind of leak.",
+        "act": "Turn on push protection for every repository."
       },
       {
         "type": "order",
@@ -2486,7 +2722,11 @@ export const SCENARIOS: Scenario[] = [
           "logs"
         ],
         "hint": "Stop the bleeding first. Then find out what it touched.",
-        "debrief": "Revoking the key stops the bill growing. The audit log tells you whether the attacker went beyond mining."
+        "debrief": "Revoking the key stops the bill growing. The audit log tells you whether the attacker went beyond mining.",
+        "topic": "response",
+        "good": "You put the leaked-key response in order.",
+        "gap": "Revoke, check the audit logs, clean history and rotate, then add guard rails.",
+        "act": "Check what a leaked key did, not just that it’s revoked."
       },
       {
         "type": "choice",
@@ -2516,7 +2756,11 @@ export const SCENARIOS: Scenario[] = [
           }
         ],
         "hint": "Where does company code stay under company control?",
-        "debrief": "Company code lives in company repositories, on company accounts and devices. That way access can be reviewed, protected and removed."
+        "debrief": "Company code lives in company repositories, on company accounts and devices. That way access can be reviewed, protected and removed.",
+        "topic": "data",
+        "good": "You kept company code under company control.",
+        "gap": "Company code stays in company repositories on company devices. Personal forks escape control.",
+        "act": "Never push company code to personal accounts, public or private."
       }
     ],
     "lessons": [
@@ -2541,16 +2785,19 @@ export const SCENARIOS: Scenario[] = [
           "id": "priv",
           "text": "Make the repo private now and revoke the key on Monday.",
           "q": "ok",
-          "pen": 60,
           "note": "Bots already copied it. Every hour the key stays valid, the bill grows. +60 seconds."
         },
         {
           "id": "del",
           "text": "Delete the key in a new commit. That fixes it.",
           "q": "poor",
-          "note": "The key is still in history and in every copy that was cloned. It still works."
+          "note": "The key is still in history and in every copy that was cloned. It still works. +120 seconds, and a detour."
         }
-      ]
+      ],
+      "topic": "secrets",
+      "good": "You revoked the key first, then cleaned up.",
+      "gap": "Deleting a key in a new commit doesn’t revoke it. History and copies keep it alive.",
+      "act": "Revoke first, clean history second."
     },
     "detour": {
       "type": "pick",
@@ -2577,8 +2824,684 @@ export const SCENARIOS: Scenario[] = [
         }
       ],
       "hint": "Git remembers everything, and the internet keeps copies.",
-      "debrief": "Once a secret is public, the only fix is to make it worthless: revoke it."
+      "debrief": "Once a secret is public, the only fix is to make it worthless: revoke it.",
+      "topic": "secrets",
+      "good": "You knew where a leaked key lives on.",
+      "gap": "Git history and bot copies keep a key alive after a new commit.",
+      "act": "Assume any secret that was pushed is public forever."
     }
+  },
+  {
+    "id": "lead-ransom",
+    "track": "lead",
+    "title": "The Weekend Crisis",
+    "company": "Vertex Pay",
+    "threat": "Leadership: ransomware, regulators, the ransom decision",
+    "lede": "Saturday, 2:40 AM. Your CISO calls: ransomware is spreading through the settlement platform. Monday’s settlement for 14 bank clients is at risk, and the attackers say they have customer data.",
+    "locks": [
+      {
+        "type": "choice",
+        "name": "The 2 AM call",
+        "task": "You’re the CEO, and the CISO has just briefed you. What’s your first move?",
+        "options": [
+          {
+            "id": "quiet",
+            "text": "Tell the CISO to handle it quietly and update you on Monday.",
+            "why": "Crisis decisions about money, regulators and clients need leadership involved from the first hour."
+          },
+          {
+            "id": "plan",
+            "text": "Invoke the incident response plan, convene the crisis team now, and confirm the CISO as incident commander.",
+            "right": true,
+            "why": "One plan, one commander, and leadership backing from the first hour."
+          },
+          {
+            "id": "clients",
+            "text": "Call your biggest bank clients right away to reassure them.",
+            "why": "Calling before you have facts risks saying something wrong. Communicate through the plan, soon, with facts."
+          },
+          {
+            "id": "hands",
+            "text": "Take personal charge of the technical response.",
+            "why": "Your job is decisions and support. Let the incident commander run the response."
+          }
+        ],
+        "hint": "Think about structure first: who leads, under which plan, with whom.",
+        "debrief": "The crisis team is on a call by 3:05 AM with the CISO leading. Legal’s first question: when does the regulatory clock run out?",
+        "topic": "leadership",
+        "good": "You put a plan and a single leader in charge from the first hour.",
+        "gap": "In a crisis, leaders set structure first: invoke the plan, name one incident commander, convene the crisis team.",
+        "act": "Check that your incident plan names an incident commander and a 24×7 crisis call list."
+      },
+      {
+        "type": "code",
+        "name": "The reporting clock",
+        "mask": "##:##",
+        "answer": "0840",
+        "task": "Indian rules require incidents like this to be reported to CERT-In within 6 hours of noticing them. Using the timeline, enter the latest time the report can go in.",
+        "cols": [
+          "Time",
+          "What happened"
+        ],
+        "rows": [
+          [
+            "01:52",
+            "Nightly backup completes as scheduled",
+            "ok"
+          ],
+          [
+            "02:31",
+            "Settlement servers start renaming files to .vtx (nobody has seen it yet)",
+            "bad"
+          ],
+          [
+            "02:40",
+            "SOC analyst spots the encryption and declares an incident",
+            "bad"
+          ],
+          [
+            "02:48",
+            "The CISO calls you",
+            "info"
+          ],
+          [
+            "03:05",
+            "Crisis team convened",
+            "info"
+          ],
+          [
+            "03:40",
+            "Ransom note found on 32 servers",
+            "bad"
+          ]
+        ],
+        "hint": "The clock starts when the incident is noticed, not when it began or when you were told.",
+        "debrief": "08:40 is the deadline. Legal files the CERT-In report at 07:15 with what’s known so far, and updates follow. RBI and your bank clients have their own timelines too.",
+        "topic": "reporting",
+        "good": "You knew the reporting clock starts at detection, not when the investigation ends.",
+        "gap": "Reporting deadlines start when the incident is noticed. Report what you know on time, then update.",
+        "act": "Keep a one-page regulatory clock (CERT-In, RBI, client contracts) in the crisis kit."
+      },
+      {
+        "type": "pick",
+        "name": "The crisis team",
+        "task": "Pick the 4 people who must join the crisis team’s first call, alongside you and the CISO.",
+        "items": [
+          {
+            "id": "legal",
+            "text": "Head of Legal and Compliance",
+            "bad": true,
+            "why": "Regulatory deadlines, contracts and the ransom question all need Legal."
+          },
+          {
+            "id": "all",
+            "text": "Every employee, so nobody hears it second-hand",
+            "why": "A crisis call needs decision-makers. Staff are briefed through the comms plan."
+          },
+          {
+            "id": "ops",
+            "text": "Head of Operations, who owns Monday’s settlement",
+            "bad": true,
+            "why": "The business impact and the workarounds sit with Operations."
+          },
+          {
+            "id": "client",
+            "text": "Your largest bank client’s CEO",
+            "why": "Clients are informed through the agreed process, not invited onto your crisis call."
+          },
+          {
+            "id": "comms",
+            "text": "Head of Corporate Communications",
+            "bad": true,
+            "why": "Clients, media and staff will need clear, consistent messages."
+          },
+          {
+            "id": "cto",
+            "text": "CTO or Head of IT Infrastructure",
+            "bad": true,
+            "why": "Recovery, backups and restore timelines need their decisions."
+          },
+          {
+            "id": "pr",
+            "text": "An outside PR agency, before Legal has reviewed anything",
+            "why": "Outside advisers come in through Legal, so advice stays consistent and protected."
+          }
+        ],
+        "hint": "Who owns the law, the business, the message and the systems?",
+        "debrief": "The core team is set: Legal, Operations, Communications and Technology, with the CISO leading. Sunday morning brings the hardest decision of the weekend.",
+        "topic": "leadership",
+        "good": "You built a crisis team that covers law, business, message and systems.",
+        "gap": "A crisis team needs decision-makers for legal, operations, communications and technology, not a crowd.",
+        "act": "Name a primary and a backup for each crisis-team role, and test the call tree twice a year."
+      },
+      {
+        "type": "order",
+        "name": "The first 48 hours",
+        "task": "Put the leadership priorities for the first 48 hours in order.",
+        "steps": [
+          {
+            "id": "contain",
+            "text": "Contain: isolate affected systems and protect the backups."
+          },
+          {
+            "id": "notify",
+            "text": "Notify: CERT-In, RBI and bank clients, within their deadlines."
+          },
+          {
+            "id": "recover",
+            "text": "Recover: rebuild and restore from clean backups, with the attacker removed."
+          },
+          {
+            "id": "review",
+            "text": "Review: root cause, lessons learned and a report to the board."
+          }
+        ],
+        "shown": [
+          "notify",
+          "review",
+          "contain",
+          "recover"
+        ],
+        "hint": "You can’t recover while the attacker is inside, and reviews come after recovery.",
+        "debrief": "Contain, notify, recover, review. That order keeps the damage small and the regulators informed. Next: the media.",
+        "topic": "response",
+        "good": "You set the right priorities for the first 48 hours.",
+        "gap": "Contain first, notify within deadlines, recover cleanly, then review.",
+        "act": "Rehearse the first 48 hours of a ransomware attack with the leadership team once a year."
+      },
+      {
+        "type": "spot",
+        "frame": "note",
+        "name": "The press statement",
+        "task": "Communications drafted a statement for the media. Tap the 4 lines that must not go out.",
+        "items": [
+          {
+            "id": "hd",
+            "html": "<b>DRAFT · Vertex Pay statement</b>"
+          },
+          {
+            "id": "open",
+            "html": "Vertex Pay is responding to a cyber incident affecting some settlement services."
+          },
+          {
+            "id": "nodata",
+            "html": "No customer data has been affected.",
+            "flag": true,
+            "note": "You don’t know that yet. Never state what isn’t confirmed."
+          },
+          {
+            "id": "blame",
+            "html": "The incident was caused by an employee clicking a malicious link.",
+            "flag": true,
+            "note": "Blaming staff in public damages trust, and it isn’t confirmed either."
+          },
+          {
+            "id": "auth",
+            "html": "We have informed the relevant authorities and are working with them."
+          },
+          {
+            "id": "nation",
+            "html": "This was a highly sophisticated nation-state attack that no company could have stopped.",
+            "flag": true,
+            "note": "Speculation and excuses. Stick to facts."
+          },
+          {
+            "id": "silent",
+            "html": "We will not be making any further comment.",
+            "flag": true,
+            "note": "Commit to updates instead. Silence fills with rumours."
+          },
+          {
+            "id": "help",
+            "html": "Customers with questions can call our helpline."
+          }
+        ],
+        "hint": "Look for claims you can’t prove yet, blame, speculation, and shutting the door.",
+        "debrief": "Facts, ownership and a promise of updates: that’s what the final statement says. One last meeting: the board.",
+        "topic": "comms",
+        "good": "You kept the statement to facts, ownership and a promise of updates.",
+        "gap": "Crisis statements avoid unconfirmed claims, blame and speculation, and promise updates.",
+        "act": "Prepare pre-approved holding statements for cyber incidents before you need them."
+      },
+      {
+        "type": "choice",
+        "name": "The board",
+        "task": "Monday evening. The board asks what you need to stop this happening again. Your best answer?",
+        "options": [
+          {
+            "id": "tools",
+            "text": "A one-off budget for new security tools, then back to business as usual.",
+            "why": "Tools alone don’t fix process, people or follow-through."
+          },
+          {
+            "id": "fund",
+            "text": "Fund the fixes from the review, give the CISO clear authority and resources, and track every action at board level until it’s closed.",
+            "right": true,
+            "why": "Funding, authority and board-level follow-through are what leaders control."
+          },
+          {
+            "id": "fire",
+            "text": "Find and dismiss whoever clicked the link.",
+            "why": "Blame drives incidents underground: people stop reporting."
+          },
+          {
+            "id": "secret",
+            "text": "Commission an outside report and keep it from the security team.",
+            "why": "The people fixing the problem need the findings."
+          }
+        ],
+        "hint": "Which answer is about what only leaders can provide?",
+        "debrief": "Case closed. The fixes are funded, owned and tracked by the board. That’s leadership in a cyber crisis.",
+        "topic": "governance",
+        "good": "You gave security funding, authority and board-level follow-through.",
+        "gap": "After an incident, leaders fund the fixes, empower the CISO and track actions to closure, without blame.",
+        "act": "Put open security actions from incidents on the board’s risk agenda until they close."
+      }
+    ],
+    "decision": {
+      "type": "decision",
+      "name": "The ransom",
+      "prompt": "Sunday, 9 AM. Clean offline backups exist, but a full restore takes about 30 hours and will miss Monday’s settlement. The attackers offer a key for ₹4 crore and threaten to publish customer data. A board member says: “Just pay and make it go away.” What do you decide?",
+      "options": [
+        {
+          "id": "restore",
+          "text": "Don’t pay. Restore from clean backups, agree a contingency settlement plan with bank clients, and involve law enforcement and regulators.",
+          "q": "best",
+          "note": "Strong call. Paying guarantees neither a working key nor deleted data, and it funds the next attack."
+        },
+        {
+          "id": "negotiate",
+          "text": "Bring in specialist negotiators to buy time while you restore, but decide nothing without Legal and the board.",
+          "q": "ok",
+          "note": "Buying time can help, but it delays a clear decision. +60 seconds."
+        },
+        {
+          "id": "pay",
+          "text": "Pay quietly to meet Monday’s deadline.",
+          "q": "poor",
+          "note": "Paying doesn’t make it go away, and “quietly” is never an option. +120 seconds, and a detour."
+        }
+      ],
+      "topic": "leadership",
+      "good": "You refused to pay and chose a clean, transparent recovery.",
+      "gap": "Paying is never quiet or guaranteed. Decide with Legal, the board and law enforcement, and restore from clean backups.",
+      "act": "Agree the company’s ransom-payment stance with the board before an incident, not during one."
+    },
+    "detour": {
+      "type": "pick",
+      "name": "After the payment",
+      "task": "You paid. The key decrypts only 60% of the files, and the attackers publish data anyway. Pick the 2 consequences you now face.",
+      "items": [
+        {
+          "id": "target",
+          "text": "You’re marked as a payer, so you’re more likely to be attacked again",
+          "bad": true,
+          "why": "Criminal groups share lists of companies that pay."
+        },
+        {
+          "id": "reg",
+          "text": "Regulators no longer need to be told, since it’s resolved",
+          "why": "Reporting duties don’t disappear when you pay."
+        },
+        {
+          "id": "duties",
+          "text": "Every notification duty still applies, now with leaked data to explain",
+          "bad": true,
+          "why": "Paying changes nothing about telling regulators, clients and customers."
+        },
+        {
+          "id": "ins",
+          "text": "Cyber insurance automatically refunds the ransom",
+          "why": "Policies vary, often limit ransom cover, and need prompt notice."
+        }
+      ],
+      "hint": "What has paying actually changed, and what hasn’t?",
+      "debrief": "Paying bought a partial key and a bigger problem. Now get the business back the right way.",
+      "topic": "leadership",
+      "good": "You saw the real cost of paying.",
+      "gap": "Paying marks you as a target, and every notification duty still applies.",
+      "act": "Brief the board on why paying rarely ends a ransomware crisis."
+    },
+    "lessons": [
+      "In a crisis, set structure first: the plan, one incident commander, the right crisis team.",
+      "Regulatory clocks start when the incident is noticed. Report on time, then update.",
+      "Don’t pay quietly. Decide with Legal, the board and law enforcement, and restore from clean backups.",
+      "Public statements: facts only, no blame, no speculation, and a promise of updates.",
+      "Back the security team with funding, authority and board-level follow-through."
+    ]
+  },
+  {
+    "id": "lead-vendor",
+    "track": "lead",
+    "title": "The Vendor Breach",
+    "company": "Halcyon Pay",
+    "threat": "Leadership: third-party breach, OTP fraud, vendor governance",
+    "lede": "Tuesday, 10:15 AM. A news site reports that Pingly, the SMS provider that sends Halcyon Pay’s OTPs, has been breached. Customers are already getting scam calls that quote their transactions.",
+    "locks": [
+      {
+        "type": "choice",
+        "name": "The headline",
+        "task": "The story is trending, and your COO forwards it to you. What do you do first?",
+        "options": [
+          {
+            "id": "wait",
+            "text": "Wait for Pingly’s official notice before doing anything.",
+            "why": "Vendors are often slow to confirm. Your own process starts now."
+          },
+          {
+            "id": "start",
+            "text": "Start your incident process, and have Security and Vendor Risk confirm with Pingly what data and connections are involved.",
+            "right": true,
+            "why": "A critical vendor’s breach is your incident. Get the facts fast."
+          },
+          {
+            "id": "cut",
+            "text": "Switch Pingly off immediately, before you know the impact.",
+            "why": "Cutting a critical service without a plan can lock every customer out. Decide with facts and a fallback."
+          },
+          {
+            "id": "post",
+            "text": "Post on LinkedIn that Halcyon Pay is not affected.",
+            "why": "You don’t know that yet."
+          }
+        ],
+        "hint": "Whose incident is this, and what do you need first?",
+        "debrief": "Within the hour, Pingly confirms attackers could read its message logs, including OTPs and customer phone numbers, for nine days. Your contract with them is pulled up.",
+        "topic": "vendor",
+        "good": "You treated the vendor’s breach as your own incident from the first minute.",
+        "gap": "A critical vendor’s breach is your incident. Start your process, and get facts before acting or speaking.",
+        "act": "Keep a list of critical vendors and each one’s incident contact in the crisis kit."
+      },
+      {
+        "type": "spot",
+        "frame": "note",
+        "name": "The contract",
+        "task": "Here are the security terms in the Pingly contract. Tap the 4 gaps that are hurting you now.",
+        "items": [
+          {
+            "id": "hd",
+            "html": "<b>Pingly services agreement · Schedule 4: Security</b>"
+          },
+          {
+            "id": "sla",
+            "html": "Service availability: 99.9% per month."
+          },
+          {
+            "id": "notice",
+            "html": "Breach notification: within 30 days of confirmation.",
+            "flag": true,
+            "note": "Far too slow when your own regulatory clocks run in hours."
+          },
+          {
+            "id": "audit",
+            "html": "Halcyon Pay may not audit Pingly’s systems or controls.",
+            "flag": true,
+            "note": "No right to audit means no way to check what they actually do."
+          },
+          {
+            "id": "retain",
+            "html": "Message logs are kept according to Pingly’s internal policy.",
+            "flag": true,
+            "note": "Nine days of OTPs sat in logs. Data you don’t need shouldn’t be kept."
+          },
+          {
+            "id": "sub",
+            "html": "Pingly may use subcontractors without notice.",
+            "flag": true,
+            "note": "Your data may sit with a fourth party you’ve never assessed."
+          },
+          {
+            "id": "fees",
+            "html": "Fees are invoiced monthly."
+          },
+          {
+            "id": "law",
+            "html": "Governing law: India."
+          }
+        ],
+        "hint": "Look for terms about time, visibility, data and who else is involved.",
+        "debrief": "Every gap was signed off as “standard terms”. Right now you need answers, fast.",
+        "topic": "vendor",
+        "good": "You spotted the contract gaps that turn a vendor problem into yours.",
+        "gap": "Vendor contracts need fast breach notice, audit rights, limits on data kept, and control of subcontractors.",
+        "act": "Add minimum security terms to every critical vendor contract at renewal."
+      },
+      {
+        "type": "pick",
+        "name": "The first questions",
+        "task": "Pick the 3 questions you need answered in the first hour.",
+        "items": [
+          {
+            "id": "data",
+            "text": "Which of our customers’ data was in Pingly’s systems?",
+            "bad": true,
+            "why": "This decides who must be told and protected."
+          },
+          {
+            "id": "cost",
+            "text": "How much will the breach cost Pingly?",
+            "why": "Their cost isn’t your decision."
+          },
+          {
+            "id": "reach",
+            "text": "Can the attackers still reach anything connected to us, such as API keys?",
+            "bad": true,
+            "why": "If they can, the breach can spread into your platform."
+          },
+          {
+            "id": "blame",
+            "text": "Who at Pingly is to blame?",
+            "why": "Blame can wait. Containment can’t."
+          },
+          {
+            "id": "live",
+            "text": "Are our OTPs still going through the compromised systems?",
+            "bad": true,
+            "why": "If so, customers are still exposed right now."
+          },
+          {
+            "id": "disc",
+            "text": "Can we get a discount at renewal?",
+            "why": "Not a first-hour question."
+          }
+        ],
+        "hint": "Focus on customers, connections and live exposure.",
+        "debrief": "The answers: 2.1 lakh customers’ numbers were exposed, OTPs are still flowing through Pingly, and Pingly’s API keys into your platform haven’t been changed.",
+        "topic": "vendor",
+        "good": "You asked the questions that decide who’s at risk right now.",
+        "gap": "In the first hour, ask what data was exposed, what connects to you, and whether exposure is still live.",
+        "act": "Keep a first-hour question list for vendor incidents in the crisis kit."
+      },
+      {
+        "type": "code",
+        "name": "The keys",
+        "mask": "####",
+        "answer": "4471",
+        "task": "Here are the API keys Pingly holds for your platform. Enter the ID of the key the attackers used.",
+        "cols": [
+          "Key ID",
+          "Used from",
+          "Last used",
+          "Status"
+        ],
+        "rows": [
+          [
+            "2210",
+            "Pingly data centre, Mumbai",
+            "Today 09:58",
+            "Active",
+            "ok"
+          ],
+          [
+            "3093",
+            "Never used",
+            "91 days ago",
+            "Active",
+            "info"
+          ],
+          [
+            "4471",
+            "Pingly data centre, Mumbai, and an unknown overseas address",
+            "Today 03:12",
+            "Active",
+            "bad"
+          ],
+          [
+            "5568",
+            "Pingly data centre, Mumbai",
+            "Today 10:01",
+            "Active",
+            "ok"
+          ]
+        ],
+        "hint": "Look for a key used from somewhere Pingly doesn’t operate.",
+        "debrief": "Key 4471 was used from an unknown address at 3:12 AM. Every key shared with Pingly is changed, and unused key 3093 should never have existed.",
+        "topic": "vendor",
+        "good": "You found the abused key and questioned the unused one.",
+        "gap": "Vendor access should be minimal and monitored. Unused keys shouldn’t exist.",
+        "act": "Review every key and access a vendor holds, and remove what isn’t needed."
+      },
+      {
+        "type": "order",
+        "name": "The response plan",
+        "task": "Put the vendor-incident response in order.",
+        "steps": [
+          {
+            "id": "owner",
+            "text": "Name one owner and run it as a single incident across Security, Vendor Risk, Legal and Communications."
+          },
+          {
+            "id": "contain",
+            "text": "Contain: change the shared keys and cut Pingly’s access to anything it doesn’t need."
+          },
+          {
+            "id": "notify",
+            "text": "Notify bank clients and regulators within their deadlines, and warn customers about the scam calls."
+          },
+          {
+            "id": "review",
+            "text": "Once it’s closed: review Pingly’s contract, risk rating and your exit plan."
+          }
+        ],
+        "shown": [
+          "review",
+          "notify",
+          "owner",
+          "contain"
+        ],
+        "hint": "Someone must own it first, and reviews come once the incident is closed.",
+        "debrief": "One owner, contain, notify, review. Last stop: the board wants to know how to stop the next one.",
+        "topic": "response",
+        "good": "You ran the vendor incident in the right order.",
+        "gap": "Name an owner, contain, notify within deadlines, then review the vendor.",
+        "act": "Make sure vendor incidents follow your main incident plan, with one owner."
+      },
+      {
+        "type": "choice",
+        "name": "The board’s question",
+        "task": "The board asks how to stop the next vendor breach from becoming your crisis. Your strongest answer?",
+        "options": [
+          {
+            "id": "house",
+            "text": "Bring every service in-house.",
+            "why": "Rarely realistic, and in-house systems get breached too."
+          },
+          {
+            "id": "program",
+            "text": "Rank vendors by how critical they are, put strong security terms in their contracts, monitor them continuously, and keep a tested exit plan.",
+            "right": true,
+            "why": "Third-party risk is managed as a programme, not avoided."
+          },
+          {
+            "id": "paper",
+            "text": "Ask every vendor to sign an annual security declaration.",
+            "why": "Paperwork without checks gives false comfort."
+          },
+          {
+            "id": "cheap",
+            "text": "Always choose the cheapest vendor with an ISO certificate.",
+            "why": "A certificate is a starting point, not proof of good security."
+          }
+        ],
+        "hint": "Which answer is a programme, not a one-off?",
+        "debrief": "Case closed. Halcyon Pay now runs third-party risk as a programme the board reviews every quarter.",
+        "topic": "governance",
+        "good": "You turned a vendor crisis into a third-party risk programme.",
+        "gap": "Manage vendors as a programme: tiering, contract terms, monitoring and tested exit plans.",
+        "act": "Ask for a quarterly third-party risk report at board or risk committee level."
+      }
+    ],
+    "decision": {
+      "type": "decision",
+      "name": "The switch",
+      "prompt": "Pingly can’t confirm the attackers are out for another 48 hours. Your backup SMS provider is ready, but switching costs ₹30 lakh and needs a 2-hour maintenance window. The business head wants to wait. What do you decide?",
+      "options": [
+        {
+          "id": "switch",
+          "text": "Switch to the backup provider tonight in a planned window, change every shared key, and tell bank clients about the change.",
+          "q": "best",
+          "note": "Strong call. Protecting customers comes before the switching cost."
+        },
+        {
+          "id": "monitor",
+          "text": "Stay with Pingly, but change the shared keys and add fraud monitoring until they confirm.",
+          "q": "ok",
+          "note": "Better than nothing, but OTPs still pass through a breached system. +60 seconds."
+        },
+        {
+          "id": "stay",
+          "text": "Stay as you are. It’s Pingly’s breach, not ours.",
+          "q": "poor",
+          "note": "Your customers, your regulators, your problem. +120 seconds, and a detour."
+        }
+      ],
+      "topic": "vendor",
+      "good": "You protected customers first, even at a cost.",
+      "gap": "When a critical vendor is compromised, move to a safe fallback and change shared keys, even when it costs money.",
+      "act": "Test your backup provider and switch-over plan for every critical vendor."
+    },
+    "detour": {
+      "type": "pick",
+      "name": "The fraud wave",
+      "task": "Two days later, scam calls quoting real OTPs are emptying customer accounts. Pick the 2 actions to take now.",
+      "items": [
+        {
+          "id": "warn",
+          "text": "Warn bank clients and customers about the scam calls, and remind them never to share an OTP",
+          "bad": true,
+          "why": "Fast, clear warnings stop more people being fooled."
+        },
+        {
+          "id": "helpline",
+          "text": "Ask customers to share OTPs only with your official helpline",
+          "why": "No genuine helpline ever asks for an OTP. This helps the scammers."
+        },
+        {
+          "id": "move",
+          "text": "Change the keys shared with Pingly and move OTP traffic to the backup provider",
+          "bad": true,
+          "why": "Closes the attackers’ source of fresh OTPs."
+        },
+        {
+          "id": "alerts",
+          "text": "Turn off fraud alerts to cut down the false alarms",
+          "why": "Exactly the wrong moment to lower your guard."
+        }
+      ],
+      "hint": "Stop the scam, and stop the source.",
+      "debrief": "The switch happens two days late, after real losses. Now find the key the attackers used.",
+      "topic": "vendor",
+      "good": "You stopped both the scam and its source.",
+      "gap": "Waiting turned a vendor breach into customer losses. Warn customers and cut the source fast.",
+      "act": "Have customer-warning templates ready for fraud waves."
+    },
+    "lessons": [
+      "A critical vendor’s breach is your incident. Start your process at once.",
+      "Contracts need fast breach notice, audit rights, data limits and control of subcontractors.",
+      "Protect customers first: switch to a backup and change shared keys, even when it costs money.",
+      "Unused keys and access shouldn’t exist. Review what vendors can reach.",
+      "Run third-party risk as a programme: tiering, monitoring, contracts and tested exit plans."
+    ]
   }
 ];
 
@@ -2599,17 +3522,17 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Hang up without saying anything.",
         "q": "ok",
-        "pen": 30,
         "note": "No leak, but Comms should know a journalist is asking. +30 seconds."
       },
       {
         "id": "c",
         "text": "Confirm what you know, off the record.",
         "q": "poor",
-        "pen": 90,
         "note": "There is no off the record. That becomes the headline. +90 seconds."
       }
-    ]
+    ],
+    "topic": "comms",
+    "act": "Pass every media call to Corporate Communications."
   },
   {
     "id": "hush",
@@ -2626,17 +3549,17 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Agree, but write it down in case you need it later.",
         "q": "ok",
-        "pen": 60,
-        "note": "Writing it down doesn’t make delaying it acceptable. +60 seconds."
+        "note": "Writing it down doesn’t make delaying it acceptable. +30 seconds."
       },
       {
         "id": "c",
         "text": "Agree. Month-end numbers matter more.",
         "q": "poor",
-        "pen": 90,
         "note": "Hiding an incident turns a breach into a compliance failure. +90 seconds."
       }
-    ]
+    ],
+    "topic": "reporting",
+    "act": "Escalate any request to delay reporting an incident to the CISO."
   },
   {
     "id": "extort",
@@ -2653,17 +3576,17 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Delete the email.",
         "q": "ok",
-        "pen": 30,
         "note": "You’ve lost evidence Security needed. +30 seconds."
       },
       {
         "id": "c",
         "text": "Reply asking for proof that they have the data.",
         "q": "poor",
-        "pen": 90,
         "note": "Engaging tells them you’re worried and willing to talk. +90 seconds."
       }
-    ]
+    ],
+    "topic": "response",
+    "act": "Never reply to attackers. Forward their messages to Security as evidence."
   },
   {
     "id": "whatsapp",
@@ -2680,17 +3603,17 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Ignore it. Not your business.",
         "q": "ok",
-        "pen": 30,
         "note": "The screenshots keep spreading. +30 seconds."
       },
       {
         "id": "c",
         "text": "Forward it to friends to warn them.",
         "q": "poor",
-        "pen": 90,
         "note": "You’ve just leaked confidential incident details. +90 seconds."
       }
-    ]
+    ],
+    "topic": "data",
+    "act": "Keep incident details out of chat groups, and report leaks of them."
   },
   {
     "id": "fakeit",
@@ -2707,17 +3630,17 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Ask for their employee ID first.",
         "q": "ok",
-        "pen": 30,
         "note": "IDs are easy to invent. Call back on a known number. +30 seconds."
       },
       {
         "id": "c",
         "text": "Install the app so they can help.",
         "q": "poor",
-        "pen": 90,
         "note": "You’ve just given an attacker remote control. +90 seconds."
       }
-    ]
+    ],
+    "topic": "social",
+    "act": "Never install remote-access apps for unexpected callers. Call IT back yourself."
   },
   {
     "id": "client",
@@ -2734,16 +3657,16 @@ export const INJECTS: Inject[] = [
         "id": "b",
         "text": "Say you’ll get back to them.",
         "q": "ok",
-        "pen": 30,
         "note": "Fine, but tell the incident lead straight away. +30 seconds."
       },
       {
         "id": "c",
         "text": "Email them the raw logs yourself.",
         "q": "poor",
-        "pen": 90,
         "note": "Raw logs can hold other clients’ data and unconfirmed guesses. +90 seconds."
       }
-    ]
+    ],
+    "topic": "comms",
+    "act": "Route client questions about incidents to the incident lead."
   }
 ];

@@ -1,41 +1,72 @@
 {
   "rules": {
+    "event": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'"
+    },
     "games": {
       ".read": true,
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
-    },
-    "rooms": {
-      ".read": true,
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'"
     },
     "teams": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
         ".write": "auth != null && auth.uid == $uid",
         "name": {
-          ".validate": "newData.isString() && newData.val().length <= 30"
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30"
         },
         "codeOk": {
-          ".validate": "(auth != null && auth.token.email == 'sgr.parmar@gmail.com') || newData.val() == root.child('secrets').child($uid).child('code').val()"
+          ".validate": "(auth != null && auth.token.email == 'FACILITATOR_EMAIL') || newData.val() == root.child('secrets').child($uid).child('code').val()"
+        }
+      }
+    },
+    "assign": {
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid"
+      }
+    },
+    "runs": {
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "game": {
+          ".write": "auth != null && auth.uid == $uid && !data.exists() && newData.val() == root.child('assign').child($uid).val()"
+        },
+        "startedAt": {
+          ".write": "auth != null && auth.uid == $uid && !data.exists()",
+          ".validate": "newData.val() == now"
+        },
+        "finishedAt": {
+          ".write": "auth != null && auth.uid == $uid && !data.exists()",
+          ".validate": "newData.val() == now"
+        },
+        "ev": {
+          "$e": {
+            ".write": "auth != null && auth.uid == $uid && !data.exists()",
+            ".validate": "newData.child('t').val() == now && newData.child('k').isString()"
+          }
         }
       }
     },
     "control": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
       "$uid": {
         ".read": "auth != null && auth.uid == $uid"
       }
     },
     "secrets": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'"
     },
     "members": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
       "$team": {
         ".read": "auth != null",
         "meta": {
@@ -50,21 +81,33 @@
       }
     },
     "roles": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
       "$m": {
         ".read": "auth != null && auth.uid == $m"
       }
     },
     "insiders": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'"
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'"
     },
     "log": {
-      ".read": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
-      ".write": "auth != null && auth.token.email == 'sgr.parmar@gmail.com'",
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      ".write": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
       "$id": {
         ".write": "auth != null && !data.exists() && newData.child('uid').val() == auth.uid"
+      }
+    },
+    "sessions": {
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      "$sid": {
+        ".write": "(auth != null && auth.token.email == 'FACILITATOR_EMAIL') && !data.exists()"
+      }
+    },
+    "sessionsIdx": {
+      ".read": "auth != null && auth.token.email == 'FACILITATOR_EMAIL'",
+      "$sid": {
+        ".write": "(auth != null && auth.token.email == 'FACILITATOR_EMAIL') && !data.exists()"
       }
     }
   }

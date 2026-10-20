@@ -1,10 +1,15 @@
-/* The team's game engine: one instance per phone. Holds the team's progress, talks to the database,
-   and reacts to the facilitator's controls. The React screens read from it and call its actions. */
+/* The team's game engine: one instance per phone. A team registers once for the event, waits for the
+   facilitator to assign a game, then starts with its team key (or when the facilitator launches it).
+   Every answer is recorded as an event, both on the phone and in the server-timed official record (runs/{uid}). */
 import { getStore, lsGet, lsSet, log, type Json, type Store } from '@/lib/store';
 import {
-  MODES, ASK_IT_MS, graph, gameById, injectById, nextOf, outcomeOf, fiftyFor, isLockNode, fmt,
-  type ModeKey, type NodeId, type GameNode, type Choice, type Outcome,
+  MODES, graph, gameById, injectById, nextOf, fiftyFor, isLockNode, fmt,
+  type ModeKey, type NodeId, type GameNode, type Outcome,
 } from '@/lib/game';
+import {
+  LIMIT_S, LIFELINE_S, HINT_S, DEC_S, INJ_S, wrongPen, tally, activeMs, clockS, outcomeFrom,
+  type Ev, type EvKind, type Interval, type Tally,
+} from '@/lib/scoring';
 import type { Scenario } from '@/data/scenarios';
 import { play, celebrate, unlockAudio } from '@/lib/sound';
 
@@ -13,42 +18,53 @@ export interface Cur {
   choice: string | null; fifty: string[]; fiftyCode: string; wrong: number;
 }
 export interface TeamState {
-  game: string; name: string; registered: boolean; started: boolean; startedAt: number;
-  node: NodeId | null; path: NodeId[]; nodeDone: boolean; cur: Cur;
-  wrong: number; pen: number; hintNodes: Record<string, 'free' | 'soc'>; pausedMs: number; pauseStart: number;
-  choices: Choice[]; handled: Record<string, number>; pendingInject: string | null; injectChoice: string | null;
+  name: string; registered: boolean; joinedAt: number; gid: string;
+  started: boolean; startedAt: number; node: NodeId | null; path: NodeId[]; nodeDone: boolean; cur: Cur;
+  ev: Ev[]; pz: Interval[]; pauseStart: number;
+  /** How a lock was helped: 'free' = facilitator hint, 'soc' = Security team hint on the phone, 'person' = someone from Security came over. */
+  hintNodes: Record<string, 'free' | 'soc' | 'person'>; handled: Record<string, number>;
+  pendingInject: string | null; injectChoice: string | null;
   finished: boolean; finishedAt: number; finalBase: number; outcome: Outcome | null; endReason: string;
-  msg: { text: string; at: number; seen?: boolean } | null; mode: ModeKey; joinedAt: number;
-  insider: boolean; vote: string;
-  askIt: { node: NodeId; at: number } | null; fiftyUsed: NodeId | null; streak: number; bestStreak: number;
+  msg: { text: string; at: number; seen?: boolean } | null; mode: ModeKey;
+  insider: boolean; vote: string; askIt: { node: NodeId; at: number } | null; fiftyUsed: NodeId | null; streak: number; bestStreak: number;
+  /** The facilitator archived the session after this team finished: keep showing the result, stop writing. */
+  closed?: boolean;
+  /** An open request for the Security team, waiting for the facilitator. */
+  helpReq?: { node: NodeId; at: number } | null;
+  /** Last facilitator adjustment and Insider reveal seen, kept for the result screen after the session closes. */
+  kept?: { adj: number; reveal: Control['reveal'] | null };
 }
-export interface GameState { state?: 'closed' | 'open' | 'paused' | 'ended'; mode?: ModeKey; insider?: boolean; room?: string }
+export interface GameState { state?: 'closed' | 'open' | 'paused' | 'ended'; mode?: ModeKey; insider?: boolean }
 export interface Control {
   launch?: number; pause?: boolean; adj?: number; msg?: { text: string; at: number }; inject?: { id: string; at: number };
   jump?: { node: NodeId; at: number }; hint?: { at: number }; end?: { at: number };
   reveal?: { at: number; seat: string; correct: boolean; voteSeat: string };
+  /** The facilitator's answer to an Ask Security request: someone sent, a hint to the phone, or no one free. */
+  help?: { at: number; req: number; node: NodeId; how: 'person' | 'phone' | 'no' };
 }
 export interface Flash { kind: 'breach' | 'granted' | 'lifeline'; text: string; at: number }
 
 const blankCur = (): Cur => ({ sel: [], x: [], code: '', picks: [], seq: [], elim: [], choice: null, fifty: [], fiftyCode: '', wrong: 0 });
-const fresh = (gid: string): TeamState => ({
-  game: gid, name: '', registered: false, started: false, startedAt: 0, node: null, path: [], nodeDone: false, cur: blankCur(),
-  wrong: 0, pen: 0, hintNodes: {}, pausedMs: 0, pauseStart: 0, choices: [], handled: {}, pendingInject: null, injectChoice: null,
-  finished: false, finishedAt: 0, finalBase: 0, outcome: null, endReason: '', msg: null, mode: 'std', joinedAt: 0,
-  insider: false, vote: '', askIt: null, fiftyUsed: null, streak: 0, bestStreak: 0,
+const fresh = (): TeamState => ({
+  name: '', registered: false, joinedAt: 0, gid: '',
+  started: false, startedAt: 0, node: null, path: [], nodeDone: false, cur: blankCur(),
+  ev: [], pz: [], pauseStart: 0, hintNodes: {}, handled: {}, pendingInject: null, injectChoice: null,
+  finished: false, finishedAt: 0, finalBase: 0, outcome: null, endReason: '', msg: null, mode: 'std',
+  insider: false, vote: '', askIt: null, fiftyUsed: null, streak: 0, bestStreak: 0, helpReq: null,
 });
 
 export class TeamEngine {
-  readonly gid: string;
-  readonly S: Scenario;
-  readonly G: Record<NodeId, GameNode>;
+  gid = '';
+  S: Scenario | null = null;
+  G: Record<NodeId, GameNode> | null = null;
   store: Store;
   uid: string | null = null;
-  P: TeamState;
-  game: GameState = { state: 'closed', mode: 'std' };
+  P: TeamState = fresh();
+  event: { reg?: string } = {};
+  game: GameState = { state: 'open', mode: 'std' };
   ctl: Control = {};
   members: Json = {};
-  loaded = { game: false, ctl: false, team: false };
+  loaded = { event: false, assign: false, ctl: false, team: false, game: false };
   fb = { msg: '', type: '' as '' | 'good' | 'bad' };
   busy = false;
   flash: Flash | null = null;
@@ -57,22 +73,14 @@ export class TeamEngine {
   connectError = '';
   private key = '';
   private offs: (() => void)[] = [];
+  private gameOff: (() => void) | null = null;
   private membersOff: (() => void) | null = null;
   private lastSync = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private lastTickSec = -1;
   private version = 0;
   private listeners = new Set<() => void>();
 
-  constructor(gid: string) {
-    this.gid = gid;
-    const s = gameById(gid);
-    if (!s) throw new Error('Unknown game');
-    this.S = s;
-    this.G = graph(gid);
-    this.store = getStore();
-    this.P = fresh(gid);
-  }
+  constructor() { this.store = getStore(); }
 
   /* ---------- subscription for React ---------- */
   subscribe = (cb: () => void) => { this.listeners.add(cb); return () => { this.listeners.delete(cb); }; };
@@ -80,50 +88,61 @@ export class TeamEngine {
   private emit() { this.version++; this.listeners.forEach((l) => l()); }
 
   /* ---------- derived values ---------- */
+  expert() { return this.P.mode === 'x'; }
   M() { return MODES[this.P.mode] || MODES.std; }
   now() { return this.store.now(); }
-  node(): GameNode | null { return this.P.node ? this.G[this.P.node] : null; }
+  node(): GameNode | null { return this.P.node && this.G ? this.G[this.P.node] : null; }
   paused() { return this.game?.state === 'paused' || !!this.ctl?.pause; }
-  rawMs(): number {
+  ready() { return this.loaded.event && this.loaded.assign && this.loaded.ctl && (!this.gid || this.loaded.game); }
+  tally(): Tally | null { return this.gid ? tally(this.gid, this.expert(), this.P.ev) : null; }
+  clockMs(): number {
     const P = this.P;
     if (!P.startedAt) return 0;
     const end = P.finished ? P.finishedAt : this.now();
-    const pz = P.pausedMs + (P.pauseStart ? end - P.pauseStart : 0);
-    const freeze = P.askIt ? Math.min(ASK_IT_MS, Math.max(0, end - P.askIt.at)) : 0;
-    return Math.max(0, end - P.startedAt - pz - freeze);
+    const pz: Interval[] = P.pauseStart ? [...P.pz, [P.pauseStart, null]] : P.pz;
+    return activeMs(P.startedAt, end, pz, P.ev);
   }
-  score(): number { return Math.floor(this.rawMs() / 1000) + this.P.pen + (this.ctl?.adj || 0); }
-  freezeLeft(): number { const a = this.P.askIt; if (!a || this.P.finished) return 0; return Math.max(0, ASK_IT_MS - (this.now() - a.at)); }
-  status(): string { const P = this.P; return P.finished ? 'finished' : P.started ? (this.paused() ? 'paused' : 'playing') : P.registered ? 'waiting' : 'new'; }
+  clock(): number { return clockS(this.clockMs()); }
+  penalties(): number { const T = this.tally(); return T ? T.penS : 0; }
+  score(): number { return this.clock() + this.penalties() + (this.ctl?.adj || 0); }
+  timeLeft(): number { return Math.max(0, LIMIT_S - this.clock()); }
+  status(): string { const P = this.P; return P.finished ? 'finished' : P.started ? (this.paused() ? 'paused' : 'playing') : P.registered ? (this.gid ? 'waiting' : 'lobby') : 'new'; }
   who() { return { uid: this.uid || '', team: this.P.name, game: this.gid }; }
   seats(): { uid: string; seat: string }[] {
     const m = this.members || {};
     return Object.keys(m).filter((k) => k !== 'meta' && m[k] && m[k].seat).map((k) => ({ uid: k, seat: m[k].seat as string }));
   }
+  /** Facilitator adjustment and Insider reveal for the result screen. */
+  after(): { adj: number; reveal: Control['reveal'] | null } { return this.P.closed ? (this.P.kept || { adj: 0, reveal: null }) : { adj: Number(this.ctl.adj) || 0, reveal: this.ctl.reveal || null }; }
   insiderOn() { return this.P.started ? !!this.P.insider : !!this.game?.insider; }
 
   /* ---------- persistence ---------- */
-  private save() { lsSet(this.key, this.P); }
+  private save() { if (this.key) lsSet(this.key, this.P); }
   sync(force = false) {
     const P = this.P;
-    if (!P.registered || !this.uid) return;
+    if (!P.registered || !this.uid || P.closed) return;
     const t = this.now();
     if (!force && t - this.lastSync < 400) return;
     this.lastSync = t;
-    const n = this.node();
+    const n = this.node(), T = this.tally();
     void this.store.update('teams/' + this.uid, {
       prog: {
-        status: this.status(), node: P.node || '', nodeName: n ? n.label : '', path: P.path, wrong: P.wrong, pen: P.pen,
-        elapsed: this.score(), raw: Math.floor(this.rawMs() / 1000), startedAt: P.startedAt, finishedAt: P.finishedAt,
-        finalBase: P.finalBase, finalTime: P.finalBase + (this.ctl?.adj || 0), outcome: P.outcome ? P.outcome.label : '', outcomeKey: P.outcome ? P.outcome.key : '',
-        endReason: P.endReason, choices: P.choices, pendingInject: P.pendingInject || '', mode: P.mode,
-        solved: P.path.filter((x) => x !== P.node || P.nodeDone).length, insider: !!P.insider, vote: P.vote || '',
-        streak: P.streak, bestStreak: P.bestStreak, askIt: !!P.askIt, fifty: !!P.fiftyUsed,
-        frozenUntil: P.askIt ? P.askIt.at + ASK_IT_MS : 0, paused: this.paused(), at: t,
+        status: this.status(), node: P.node || '', nodeName: n ? n.label : '', path: P.path, mode: P.mode,
+        steps: T ? T.steps : 0, wrong: T ? T.wrong : 0, finalBase: P.finished ? P.finalBase : null,
+        outcome: P.outcome ? P.outcome.label : '', outcomeKey: P.outcome ? P.outcome.key : '', endReason: P.endReason,
+        pendingInject: P.pendingInject || '', insider: !!P.insider, vote: P.vote || '', streak: P.streak, at: t,
       },
     }).catch(() => undefined);
   }
   private setFb(msg = '', type: '' | 'good' | 'bad' = '') { this.fb = { msg, type }; }
+  /** Records an event locally and in the server-timed official record. */
+  private rec(k: EvKind, n?: string, o?: string) {
+    const e: Ev = { t: this.now(), k };
+    if (n) e.n = n;
+    if (o) e.o = o;
+    this.P.ev.push(e);
+    if (this.uid) void this.store.push('runs/' + this.uid + '/ev', { ...e, t: this.store.ts() }).catch(() => undefined);
+  }
 
   /* ---------- lifecycle ---------- */
   async start() {
@@ -131,14 +150,18 @@ export class TeamEngine {
       await this.store.init();
       const uid = await this.store.signInTeam();
       this.uid = uid;
-      this.key = 'kbr-p-' + this.gid + '-' + uid;
-      this.P = { ...fresh(this.gid), ...(lsGet<TeamState>(this.key) || {}) };
+      this.key = 'kbr-t-' + uid;
+      const saved = lsGet<TeamState>(this.key);
+      this.P = { ...fresh(), ...(saved || {}) };
       this.P.cur = { ...blankCur(), ...(this.P.cur || {}) };
-      this.offs.push(this.store.on('games/' + this.gid, (v) => { this.game = v || { state: 'closed', mode: 'std' }; this.loaded.game = true; this.onGame(); }));
+      if (!Array.isArray(this.P.ev)) this.P.ev = [];
+      if (!Array.isArray(this.P.pz)) this.P.pz = [];
+      this.offs.push(this.store.on('event', (v) => { this.event = v || {}; this.loaded.event = true; this.emit(); }));
+      this.offs.push(this.store.on('assign/' + uid, (v) => { this.loaded.assign = true; this.onAssign(typeof v === 'string' ? v : ''); }));
       this.offs.push(this.store.on('control/' + uid, (v) => { this.ctl = v || {}; this.loaded.ctl = true; this.onCtl(); }));
       this.offs.push(this.store.on('teams/' + uid, (v) => {
         const first = !this.loaded.team; this.loaded.team = true;
-        if (first && this.P.registered && v === null && !this.P.started) { this.P.registered = false; this.save(); }
+        if (first && this.P.registered && v === null && !this.P.started) { this.P = fresh(); this.save(); }
         this.onTeam(v);
       }));
       this.timer = setInterval(() => this.tick(), 500);
@@ -149,6 +172,7 @@ export class TeamEngine {
   }
   stop() {
     this.offs.forEach((o) => o()); this.offs = [];
+    if (this.gameOff) { this.gameOff(); this.gameOff = null; }
     if (this.membersOff) { this.membersOff(); this.membersOff = null; }
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -156,9 +180,27 @@ export class TeamEngine {
   private tick() {
     if (!this.P.started || this.P.finished) return;
     if (this.now() - this.lastSync > 10_000) this.sync(true);
-    const s = this.score(), target = this.M().target;
-    if (!this.paused() && !this.freezeLeft() && s >= target - 30 && s < target && s !== this.lastTickSec) { this.lastTickSec = s; play('tick'); }
+    if (!this.paused() && this.clock() >= LIMIT_S) { this.finish('time'); return; }
     this.emit();
+  }
+
+  /* ---------- assignment: the facilitator picks the game ---------- */
+  private onAssign(gidIn: string) {
+    const P = this.P;
+    let gid = gidIn;
+    if (P.started && P.gid && gid !== P.gid) gid = P.gid; // a game in progress keeps its game
+    if (gid && !gameById(gid)) gid = '';
+    if (gid === this.gid && (this.G || !gid)) { this.emit(); return; }
+    this.gid = gid; P.gid = gid;
+    this.S = gid ? gameById(gid) : null;
+    this.G = gid ? graph(gid) : null;
+    if (this.gameOff) { this.gameOff(); this.gameOff = null; }
+    if (this.membersOff) { this.membersOff(); this.membersOff = null; }
+    this.loaded.game = !gid;
+    if (gid) {
+      this.gameOff = this.store.on('games/' + gid, (v) => { this.game = v || { state: 'open', mode: 'std' }; this.loaded.game = true; this.onGame(); });
+    }
+    this.save(); this.emit();
   }
 
   /* ---------- pause accounting ---------- */
@@ -167,12 +209,12 @@ export class TeamEngine {
     if (!P.started || P.finished) return;
     const pz = this.paused(), t = this.now();
     if (pz && !P.pauseStart) { P.pauseStart = t; this.save(); this.sync(true); }
-    if (!pz && P.pauseStart) { P.pausedMs += t - P.pauseStart; P.pauseStart = 0; this.save(); this.sync(true); }
+    if (!pz && P.pauseStart) { P.pz.push([P.pauseStart, t]); P.pauseStart = 0; this.save(); this.sync(true); }
   }
 
   /* ---------- Insider round: teammates join on their own phones ---------- */
   private watchMembers() {
-    if (this.membersOff || !this.P.registered || !this.insiderOn() || !this.uid) return;
+    if (this.membersOff || !this.P.registered || !this.gid || !this.insiderOn() || !this.uid) return;
     const uid = this.uid;
     void this.store.update('members/' + uid + '/meta', { name: this.P.name, game: this.gid }).catch(() => undefined);
     this.membersOff = this.store.on('members/' + uid, (v) => {
@@ -187,15 +229,15 @@ export class TeamEngine {
     unlockAudio();
     const t = String(rawName).trim().replace(/\s+/g, ' ').slice(0, 30);
     if (!t) { this.setFb('Enter your team name.', 'bad'); this.emit(); return; }
-    if (this.game.state !== 'open') { this.setFb('Registration isn’t open yet. Wait for your facilitator.', 'bad'); this.emit(); return; }
+    if (this.event.reg !== 'open') { this.setFb('Registration isn’t open yet. Wait for your facilitator.', 'bad'); this.emit(); return; }
     const ctl = this.ctl;
     this.busy = true;
     const P = this.P;
     P.name = t; P.registered = true; P.joinedAt = this.now();
-    P.handled = { launch: ctl.launch || 0, inject: ctl.inject?.at || 0, jump: ctl.jump?.at || 0, hint: ctl.hint?.at || 0, end: ctl.end?.at || 0, msg: ctl.msg?.at || 0 };
+    P.handled = { launch: ctl.launch || 0, inject: ctl.inject?.at || 0, jump: ctl.jump?.at || 0, hint: ctl.hint?.at || 0, end: ctl.end?.at || 0, msg: ctl.msg?.at || 0, help: ctl.help?.at || 0 };
     this.save(); this.emit();
-    this.store.set('teams/' + this.uid, { name: t, game: this.gid, joinedAt: P.joinedAt, prog: { status: 'waiting', at: this.now() } }).then(() => {
-      this.busy = false; void log('joined', 'Joined ' + this.S.title, this.who()); this.setFb(); this.watchMembers(); this.emit();
+    this.store.set('teams/' + this.uid, { name: t, joinedAt: P.joinedAt, prog: { status: 'lobby', at: this.now() } }).then(() => {
+      this.busy = false; void log('joined', 'Registered', this.who()); this.setFb(); this.emit();
     }, () => {
       this.busy = false; P.registered = false; this.save(); this.setFb('Couldn’t register. Check your connection and try again.', 'bad'); this.emit();
     });
@@ -203,62 +245,78 @@ export class TeamEngine {
   tryCode(raw: string) {
     unlockAudio();
     const c = String(raw).replace(/\D/g, '');
-    if (c.length !== 4) { this.setFb('Enter the 4-digit code from your facilitator.', 'bad'); this.emit(); return; }
+    if (!this.gid) { this.setFb('Your facilitator hasn’t assigned your game yet.', 'bad'); this.emit(); return; }
+    if (c.length !== 4) { this.setFb('Enter the 4-digit team key from your facilitator.', 'bad'); this.emit(); return; }
     this.busy = true; this.emit();
     void this.store.attemptCode(this.uid as string, c).then((ok) => {
       this.busy = false;
-      if (ok) { void log('code_ok', 'Code accepted', this.who()); this.startGame(); }
-      else { void log('code_fail', 'Tried ' + c, this.who()); this.setFb('That code isn’t right. Check it with your facilitator.', 'bad'); play('wrong'); this.emit(); }
+      if (ok) { void log('code_ok', 'Team key accepted', this.who()); this.startGame(); }
+      else { void log('code_fail', 'Tried ' + c, this.who()); this.setFb('That key isn’t right. Check it with your facilitator.', 'bad'); play('wrong'); this.emit(); }
     });
   }
   private startGame() {
     const P = this.P;
-    if (P.started) return;
-    P.started = true; P.startedAt = this.now(); P.node = 'L1'; P.path = ['L1']; P.cur = blankCur(); P.nodeDone = false;
+    if (P.started || !this.gid || !this.uid) return;
+    P.started = true; P.startedAt = this.now(); P.node = 'L1'; P.path = ['L1']; P.cur = blankCur(); P.nodeDone = false; P.ev = []; P.pz = [];
     P.mode = this.game.mode === 'x' ? 'x' : 'std'; P.insider = !!this.game.insider;
+    const uid = this.uid, store = this.store;
+    void store.set('runs/' + uid + '/game', this.gid).catch(() => undefined);
+    void store.set('runs/' + uid + '/startedAt', store.ts()).catch(() => undefined);
+    this.rec('go', 'L1', P.mode);
     this.setFb(); this.save(); this.sync(true); void log('started', MODES[P.mode].label + ' mode', this.who());
+    this.watchMembers();
     play('launch'); this.emit(); this.scrollTop();
   }
   private goTo(nodeId: NodeId) {
     if (nodeId === 'END') { this.finish('complete'); return; }
     const P = this.P;
+    this.withdrawHelp();
     P.node = nodeId; P.path.push(nodeId); P.cur = blankCur(); P.nodeDone = false;
     this.setFb(); this.save(); this.sync(true); this.emit(); this.scrollTop();
   }
-  private finish(reason: 'complete' | 'facilitator' | 'game') {
+  private finish(reason: 'complete' | 'facilitator' | 'game' | 'time') {
     const P = this.P;
-    if (P.finished) return;
-    if (P.pauseStart) { P.pausedMs += this.now() - P.pauseStart; P.pauseStart = 0; }
-    P.finished = true; P.finishedAt = this.now(); P.endReason = reason; P.pendingInject = null;
-    P.finalBase = Math.floor(this.rawMs() / 1000) + P.pen;
-    P.outcome = reason === 'complete' ? outcomeOf(P.choices) : { key: 'stopped', label: reason === 'facilitator' ? 'Stopped by facilitator' : 'Game ended before the case was closed' };
+    if (P.finished || !this.gid) return;
+    if (P.pendingInject) { this.rec('ic', '', P.pendingInject); P.pendingInject = null; }
+    if (P.pauseStart) { P.pz.push([P.pauseStart, this.now()]); P.pauseStart = 0; }
+    this.withdrawHelp();
+    this.rec('end', '', reason);
+    if (this.uid) void this.store.set('runs/' + this.uid + '/finishedAt', this.store.ts()).catch(() => undefined);
+    P.finished = true; P.finishedAt = this.now(); P.endReason = reason;
+    const T = this.tally() as Tally;
+    P.finalBase = this.clock() + T.penS;
+    P.outcome = outcomeFrom(T, reason);
     this.save(); this.sync(true);
-    void log(reason === 'complete' ? 'finished' : 'stopped', P.outcome.label + ' · ' + fmt(P.finalBase + (this.ctl.adj || 0)), this.who());
+    void log(reason === 'complete' ? 'finished' : reason === 'time' ? 'time' : 'stopped', P.outcome.label + ' · ' + fmt(P.finalBase + (this.ctl.adj || 0)), this.who());
     if (reason === 'complete') { play('finish'); void celebrate(); }
     this.emit(); this.scrollTop();
   }
   private scrollTop() { if (typeof window !== 'undefined') window.scrollTo(0, 0); }
 
   /* ---------- feedback ---------- */
-  private wrongAnswer(id?: string) {
-    const P = this.P, p = this.M().pen;
-    P.pen += p; P.wrong++; P.cur.wrong++; P.streak = 0;
+  private wrongAnswer(o: string, shake?: string) {
+    const P = this.P, n = this.node();
+    P.cur.wrong++; P.streak = 0;
+    const p = wrongPen(P.cur.wrong, this.expert());
+    this.rec('x', P.node || '', o);
     this.pop = { text: '+' + p + 's', at: Date.now() };
     this.flash = { kind: 'breach', text: '+' + p + ' seconds', at: Date.now() };
-    this.shakeId = id || null;
+    this.shakeId = shake || null;
     setTimeout(() => { this.shakeId = null; this.emit(); }, 450);
     play('wrong');
     try { navigator.vibrate?.(180); } catch { /* not supported */ }
-    const n = this.node();
     void log('wrong', n ? n.label : '', this.who());
     return p;
   }
   private solved() {
     const P = this.P;
     P.nodeDone = true;
+    this.withdrawHelp();
     if (P.cur.wrong === 0) { P.streak++; P.bestStreak = Math.max(P.bestStreak, P.streak); } else P.streak = 0;
+    this.rec('sv', P.node || '');
     this.flash = { kind: 'granted', text: P.streak >= 2 ? P.streak + ' in a row' : '', at: Date.now() };
     play(P.streak >= 2 ? 'streak' : 'correct');
+    try { navigator.vibrate?.(40); } catch { /* not supported */ }
     this.setFb(); this.save(); this.sync(true);
     const n = this.node(); void log('solved', (n ? n.label : '') + (P.cur.wrong === 0 ? ' · first try' : ''), this.who());
     this.emit();
@@ -267,16 +325,26 @@ export class TeamEngine {
   /* ---------- facilitator signals ---------- */
   private onCtl() {
     const P = this.P, ctl = this.ctl, h = P.handled || (P.handled = {});
-    if (!P.registered) { this.emit(); return; }
-    if (ctl.launch && ctl.launch !== h.launch) { h.launch = ctl.launch; this.save(); if (!P.started) { this.startGame(); return; } }
+    if (!P.registered || P.closed) { this.emit(); return; }
+    P.kept = { adj: Number(ctl.adj) || 0, reveal: ctl.reveal || null };
+    if (ctl.launch && ctl.launch !== h.launch) { h.launch = ctl.launch; this.save(); if (!P.started && this.gid) { this.startGame(); return; } }
     if (ctl.msg && ctl.msg.at !== h.msg) { h.msg = ctl.msg.at; P.msg = { text: ctl.msg.text, at: ctl.msg.at }; this.save(); play('alert'); }
     if (ctl.end && ctl.end.at !== h.end) { h.end = ctl.end.at; this.save(); if (P.started && !P.finished) { this.finish('facilitator'); return; } }
     if (P.started && !P.finished) {
-      if (ctl.inject && ctl.inject.at !== h.inject) { h.inject = ctl.inject.at; if (injectById(ctl.inject.id)) { P.pendingInject = ctl.inject.id; P.injectChoice = null; play('alert'); } this.save(); this.sync(true); }
-      if (ctl.jump && ctl.jump.at !== h.jump) { h.jump = ctl.jump.at; this.save(); if (this.G[ctl.jump.node]) { this.goTo(ctl.jump.node); return; } }
-      if (ctl.hint && ctl.hint.at !== h.hint) { h.hint = ctl.hint.at; const n = this.node(); if (n && isLockNode(n) && !P.hintNodes[n.id]) P.hintNodes[n.id] = 'free'; this.save(); this.sync(true); }
+      if (ctl.inject && ctl.inject.at !== h.inject) {
+        h.inject = ctl.inject.at;
+        if (injectById(ctl.inject.id) && !P.pendingInject) { P.pendingInject = ctl.inject.id; P.injectChoice = null; this.rec('io', '', ctl.inject.id); play('alert'); }
+        this.save(); this.sync(true);
+      }
+      if (ctl.jump && ctl.jump.at !== h.jump) { h.jump = ctl.jump.at; this.save(); if (this.G && this.G[ctl.jump.node]) { this.rec('jump', ctl.jump.node); this.goTo(ctl.jump.node); return; } }
+      if (ctl.hint && ctl.hint.at !== h.hint) {
+        h.hint = ctl.hint.at; const n = this.node();
+        if (n && isLockNode(n) && !P.hintNodes[n.id] && !P.nodeDone) { P.hintNodes[n.id] = 'free'; this.rec('hint', n.id); this.pop = { text: '+' + HINT_S + 's', at: Date.now() }; }
+        this.save(); this.sync(true);
+      }
+      if (ctl.help && ctl.help.at !== h.help) { h.help = ctl.help.at; this.onHelp(ctl.help); this.save(); this.sync(true); }
     } else {
-      h.inject = ctl.inject?.at || h.inject; h.jump = ctl.jump?.at || h.jump; h.hint = ctl.hint?.at || h.hint; this.save();
+      h.inject = ctl.inject?.at || h.inject; h.jump = ctl.jump?.at || h.jump; h.hint = ctl.hint?.at || h.hint; h.help = ctl.help?.at || h.help; this.save();
     }
     this.applyPause(); this.sync(true); this.emit();
   }
@@ -288,25 +356,55 @@ export class TeamEngine {
   private onTeam(rec: Json) {
     const P = this.P;
     if (P.registered && rec === null && this.loaded.team) {
-      const keep = P.name; this.P = fresh(this.gid); this.P.name = keep; this.save();
-      this.setFb('Your facilitator removed this registration. You can join again.', 'bad'); this.emit(); this.scrollTop(); return;
+      // A finished team keeps its result and report on screen when the facilitator starts a new session.
+      if (P.finished) { if (!P.closed) { P.closed = true; this.save(); } this.emit(); return; }
+      const keep = P.name; this.P = fresh(); this.P.name = keep; this.gid = ''; this.S = null; this.G = null; this.save();
+      this.setFb('Your facilitator cleared this registration. Register again when registration is open.', 'bad'); this.emit(); this.scrollTop(); return;
     }
-    if (P.registered && rec && rec.codeOk && !P.started && !P.finished) { this.startGame(); return; }
+    if (P.registered && rec && rec.codeOk && !P.started && !P.finished && this.gid) { this.startGame(); return; }
     this.emit();
   }
 
-  /* ---------- lifelines ---------- */
-  canAskIt(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.askIt && !this.P.pendingInject; }
+  /* ---------- lifelines: each one adds 30 seconds ---------- */
+  /** Ask Security team: the team calls for help, the facilitator sends someone (or a hint to the phone), and only then is it charged. */
+  canAskIt(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.askIt && !this.P.helpReq && !this.P.pendingInject; }
   canFifty(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.fiftyUsed && !this.P.pendingInject; }
   askIt() {
-    if (!this.canAskIt() || this.paused()) return;
-    const P = this.P, n = this.node() as GameNode;
-    P.askIt = { node: n.id, at: this.now() };
-    P.hintNodes[n.id] = 'soc';
-    this.flash = { kind: 'lifeline', text: 'Ask IT · clock frozen 45s', at: Date.now() };
+    if (!this.canAskIt() || this.paused() || !this.uid) return;
+    const P = this.P, n = this.node() as GameNode, at = this.now();
+    P.helpReq = { node: n.id, at };
+    this.rec('rq', n.id);
+    void this.store.update('teams/' + this.uid, { help: { node: n.id, at, label: n.label } }).catch(() => undefined);
+    this.setFb();
     play('lifeline');
-    void log('askit', n.label, this.who());
+    void log('help', n.label, this.who());
     this.save(); this.sync(true); this.emit();
+  }
+  /** Cancels an open request once it isn't needed: the lock is solved, the team moves on, or the game ends. Nothing is charged. */
+  private withdrawHelp() {
+    const P = this.P;
+    if (!P.helpReq) return;
+    this.rec('rqx', P.helpReq.node, 'withdrawn');
+    P.helpReq = null;
+    if (this.uid) void this.store.update('teams/' + this.uid, { help: null }).catch(() => undefined);
+    void log('help_withdrawn', '', this.who());
+  }
+  private onHelp(a: NonNullable<Control['help']>) {
+    const P = this.P, req = P.helpReq;
+    if (!req || a.req !== req.at) return; // already withdrawn, or an answer to an older request
+    P.helpReq = null;
+    if (a.how === 'no') {
+      this.rec('rqx', req.node, 'declined');
+      this.setFb('The Security team can’t come right now. Your Ask Security lifeline is back.', '');
+      play('alert');
+      return;
+    }
+    P.askIt = { node: req.node, at: this.now() };
+    P.hintNodes[req.node] = a.how === 'phone' ? 'soc' : 'person';
+    this.rec('ask', req.node, a.how);
+    this.flash = { kind: 'lifeline', text: (a.how === 'phone' ? 'Security team hint' : 'Security is on the way') + ' · +' + LIFELINE_S + ' seconds', at: Date.now() };
+    this.pop = { text: '+' + LIFELINE_S + 's', at: Date.now() };
+    play('lifeline');
   }
   fifty() {
     if (!this.canFifty() || this.paused()) return;
@@ -320,7 +418,9 @@ export class TeamEngine {
     if (n.type === 'order' && r.seq) c.seq = r.seq.slice();
     if (n.type === 'code' && r.codePrefix != null) { c.code = r.codePrefix; c.fiftyCode = r.codePrefix; }
     P.fiftyUsed = n.id;
-    this.flash = { kind: 'lifeline', text: '50:50 used', at: Date.now() };
+    this.rec('ff', n.id);
+    this.flash = { kind: 'lifeline', text: '50:50 · +' + LIFELINE_S + ' seconds', at: Date.now() };
+    this.pop = { text: '+' + LIFELINE_S + 's', at: Date.now() };
     play('lifeline');
     void log('fifty', n.label, this.who());
     this.save(); this.sync(true); this.emit();
@@ -340,27 +440,28 @@ export class TeamEngine {
         void this.store.update('teams/' + this.uid, { vote: v }); void log('vote', 'Voted ' + (vs ? vs.seat : v), this.who());
         this.save(); this.sync(true); this.emit(); return;
       }
-      case 'leave': void this.store.remove('teams/' + this.uid); this.P = fresh(this.gid); this.save(); this.emit(); this.scrollTop(); return;
+      case 'again': { if (!P.closed) return; const keep = P.name; this.P = fresh(); this.P.name = keep; this.gid = ''; this.S = null; this.G = null; this.setFb(); this.save(); this.emit(); this.scrollTop(); return; }
+      case 'leave': if (P.started) return; void this.store.remove('teams/' + this.uid); this.P = fresh(); this.gid = ''; this.save(); this.emit(); this.scrollTop(); return;
       case 'dec': {
         if (!n || n.type !== 'decision' || c.choice || !v) return;
         const d = n.options.find((x) => x.id === v); if (!d) return;
-        c.choice = v; P.pen += d.pen || 0; if (d.pen) this.pop = { text: '+' + d.pen + 's', at: Date.now() };
+        c.choice = v; this.rec('dec', 'D', v);
+        if (DEC_S[d.q]) this.pop = { text: '+' + DEC_S[d.q] + 's', at: Date.now() };
         play(d.q === 'best' ? 'correct' : 'wrong');
-        P.choices.push({ node: 'D', id: v, q: d.q, label: n.name + ': ' + d.text });
         void log('decision', d.q.toUpperCase() + ' · ' + d.text, this.who()); this.save(); this.sync(true); this.emit(); return;
       }
       case 'inj': {
         if (P.injectChoice || !v) return;
         const I = injectById(P.pendingInject); if (!I) return;
         const io = I.options.find((x) => x.id === v); if (!io) return;
-        P.injectChoice = v; P.pen += io.pen || 0; if (io.pen) this.pop = { text: '+' + io.pen + 's', at: Date.now() };
+        P.injectChoice = v; this.rec('ia', '', I.id + ':' + v);
+        if (INJ_S[io.q]) this.pop = { text: '+' + INJ_S[io.q] + 's', at: Date.now() };
         play(io.q === 'best' ? 'correct' : 'wrong');
-        P.choices.push({ node: 'inject:' + I.id, id: v, q: io.q, label: I.name + ': ' + io.text });
         void log('inject_answer', I.name + ' · ' + io.q.toUpperCase(), this.who()); this.save(); this.sync(true); this.emit(); return;
       }
-      case 'injdone': P.pendingInject = null; P.injectChoice = null; this.save(); this.sync(true); this.emit(); this.scrollTop(); return;
+      case 'injdone': if (P.pendingInject) this.rec('ic', '', P.pendingInject); P.pendingInject = null; P.injectChoice = null; this.save(); this.sync(true); this.emit(); this.scrollTop(); return;
       case 'next': {
-        if (!n) return;
+        if (!n || !this.gid) return;
         if (n.type === 'decision') { const dq = n.options.find((x) => x.id === c.choice); if (!dq) return; this.goTo(nextOf(this.gid, n.id, dq.q)); return; }
         if (!P.nodeDone) return;
         this.goTo(nextOf(this.gid, n.id)); return;
@@ -374,10 +475,10 @@ export class TeamEngine {
         if (!it || c.sel.includes(v) || c.x.includes(v) || c.fifty.includes(v)) return;
         const need = n.items.filter((x) => x.flag).length;
         if (it.flag) {
-          c.sel.push(v);
+          c.sel.push(v); this.rec('ok', n.id, v);
           if (c.sel.length === need) { this.solved(); return; }
           this.setFb('Good catch. ' + (need - c.sel.length) + ' to go.', 'good'); play('correct');
-        } else { c.x.push(v); const p = this.wrongAnswer(v); this.setFb('That part is normal. +' + p + ' seconds.', 'bad'); }
+        } else { c.x.push(v); const p = this.wrongAnswer(v, v); this.setFb('That part is normal. +' + p + ' seconds.', 'bad'); }
         break;
       }
       case 'key': if (n.type !== 'code' || !v) return; if (c.code.length < n.answer.length) c.code += v; this.setFb(); break;
@@ -386,7 +487,7 @@ export class TeamEngine {
         if (n.type !== 'code') return;
         if (c.code.length < n.answer.length) { this.setFb('Enter all ' + n.answer.length + ' digits.', 'bad'); break; }
         if (c.code === n.answer) { this.solved(); return; }
-        const p = this.wrongAnswer('code'); c.code = c.fiftyCode; this.setFb('Not that one. +' + p + ' seconds.', 'bad'); break;
+        const p = this.wrongAnswer(c.code, 'code'); c.code = c.fiftyCode; this.setFb('Not that one. +' + p + ' seconds.', 'bad'); break;
       }
       case 'pick': {
         if (n.type !== 'pick' || !v || c.fifty.includes(v)) return;
@@ -400,13 +501,13 @@ export class TeamEngine {
         if (n.type !== 'pick') return;
         const right = c.picks.filter((id) => n.items.find((x) => x.id === id)?.bad).length;
         if (right === c.picks.length) { this.solved(); return; }
-        const p = this.wrongAnswer(); this.setFb('Not quite: ' + right + ' of your picks ' + (right === 1 ? 'is' : 'are') + ' right. +' + p + ' seconds.', 'bad'); break;
+        const p = this.wrongAnswer(c.picks.join(',')); this.setFb('Not quite: ' + right + ' of your picks ' + (right === 1 ? 'is' : 'are') + ' right. +' + p + ' seconds.', 'bad'); break;
       }
       case 'choose': {
         if (n.type !== 'choice' || !v || c.elim.includes(v) || c.fifty.includes(v)) return;
         const o = n.options.find((x) => x.id === v); if (!o) return;
         if (o.right) { this.solved(); return; }
-        c.elim.push(v); const p = this.wrongAnswer(v); this.setFb('Not the safest option. +' + p + ' seconds.', 'bad'); break;
+        c.elim.push(v); const p = this.wrongAnswer(v, v); this.setFb('Not the safest option. +' + p + ' seconds.', 'bad'); break;
       }
       case 'step': {
         if (n.type !== 'order' || !v || c.fifty.includes(v)) return;
@@ -420,7 +521,7 @@ export class TeamEngine {
         let bad = -1;
         for (let k = 0; k < n.steps.length; k++) if (c.seq[k] !== n.steps[k].id) { bad = k; break; }
         if (bad === -1) { this.solved(); return; }
-        const p = this.wrongAnswer(); c.seq = c.seq.filter((id) => c.fifty.includes(id));
+        const p = this.wrongAnswer(c.seq.join(',')); c.seq = c.seq.filter((id) => c.fifty.includes(id));
         this.setFb('Step ' + (bad + 1) + ' is out of place. Try again. +' + p + ' seconds.', 'bad'); break;
       }
       default: return;

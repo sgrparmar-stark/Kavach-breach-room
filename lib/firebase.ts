@@ -1,7 +1,7 @@
 /* Firebase app and Realtime Database (modular SDK, v10+). Configuration comes from NEXT_PUBLIC_FIREBASE_* environment variables.
    With no configuration the app runs in demo mode (data stays in one browser). */
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getDatabase, ref, onValue, set, update, push, remove, get, query, limitToFirst, type Database } from 'firebase/database';
+import { getDatabase, ref, onValue, set, update, push, remove, get, query, limitToFirst, serverTimestamp, type Database } from 'firebase/database';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, type Auth, type User } from 'firebase/auth';
 import type { Store, Json } from './store';
 
@@ -65,6 +65,7 @@ export function createFirebaseStore(role: 'host' | 'team'): Store {
     remove: (p) => remove(ref(db, p)),
     attemptCode: (uid, code) => set(ref(db, 'teams/' + uid + '/codeOk'), String(code)).then(() => true, () => false),
     now: () => Date.now() + offset,
+    ts: () => serverTimestamp(),
     onConnected(cb) { return onValue(ref(db, '.info/connected'), (s) => cb(s.val() === true)); },
   };
   return store;

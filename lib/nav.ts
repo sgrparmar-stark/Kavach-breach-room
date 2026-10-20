@@ -11,8 +11,9 @@ export function baseUrl(): string {
   if (base_) return base_();
   return typeof window === 'undefined' ? '' : window.location.origin;
 }
-export function playUrl(params: Record<string, string>): string {
+export function playUrl(params: Record<string, string> = {}): string {
   const b = baseUrl();
   if (!b) return '';
-  return b.replace(/\/$/, '') + '/play?' + new URLSearchParams(params).toString();
+  const q = new URLSearchParams(params).toString();
+  return b.replace(/\/$/, '') + '/play' + (q ? '?' + q : '');
 }

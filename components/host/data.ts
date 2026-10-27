@@ -15,7 +15,7 @@ export type Paths = 'event' | 'games' | 'teams' | 'assign' | 'runs' | 'control' 
 export type Data = Record<Paths, Json> & { loaded: boolean };
 /** The parts of the data needed to compute results: the live data, or an archived session. */
 export type Snap = { teams: Json; assign: Json; runs: Json; control: Json; games: Json; members?: Json; insiders?: Json; log?: Json };
-export interface Team { uid: string; name: string; game: string; joinedAt?: number; codeOk?: string; vote?: string; prog?: Json; help?: { node: string; at: number; label?: string } }
+export interface Team { uid: string; name: string; game: string; joinedAt?: number; vote?: string; prog?: Json }
 
 const PATHS: Paths[] = ['event', 'games', 'teams', 'assign', 'runs', 'control', 'secrets', 'log', 'members', 'roles', 'insiders', 'sessionsIdx'];
 export const GS_LABEL: Record<string, string> = { closed: 'Ready', open: 'Running', paused: 'Paused', ended: 'Ended' };
@@ -33,7 +33,7 @@ export function useConsoleData(): Data {
     return () => offs.forEach((o) => o());
   }, []);
   const issuing = useRef<Record<string, boolean>>({});
-  useEffect(() => { if (D.loaded) issueKeys(D, issuing.current); }, [D]);
+  useEffect(() => { if (D.loaded) dealGames(D, issuing.current); }, [D]);
   useEffect(() => { if (D.loaded) lateLoyals(D); }, [D]);
   return D;
 }
@@ -51,16 +51,6 @@ export function teamList(S: Snap): Team[] {
 }
 export function teamsOf(S: Snap, gid: string | 'all'): Team[] { return teamList(S).filter((t) => t.game && (gid === 'all' || t.game === gid)); }
 export function lobbyTeams(S: Snap): Team[] { return teamList(S).filter((t) => !t.game); }
-/** Teams that pressed Ask Security team and are waiting for the facilitator, oldest first. */
-export interface HelpReq { t: Team; node: string; at: number; label: string; hint: string; gameTitle: string }
-export function helpQueue(S: Snap): HelpReq[] {
-  return teamList(S).filter((t) => t.help && t.game && !(S.runs?.[t.uid]?.finishedAt)).map((t) => {
-    const h = t.help as { node: string; at: number; label?: string };
-    const n = graph(t.game)[h.node as NodeId];
-    return { t, node: h.node, at: Number(h.at) || 0, label: h.label || (n ? n.label : h.node), hint: n && isLockNode(n) ? n.hint : '', gameTitle: gameById(t.game)?.title || '' };
-  }).sort((a, b) => a.at - b.at);
-}
-
 /** The official result for one team, from the server-timed record. */
 export function resultOf(S: Snap, t: Team, now: number): Result {
   const run = (S.runs && S.runs[t.uid]) || {};
@@ -109,15 +99,29 @@ export function logRows(S: Snap): Json[] {
 export function reportOf(r: Result): Report { return buildReport(r.gid, r.T); }
 
 /* ---------- background chores ---------- */
-function issueKeys(D: Data, issuing: Record<string, boolean>) {
-  const store = getStore();
-  const used: Record<string, boolean> = {};
-  Object.values(D.secrets as Record<string, Json>).forEach((s) => { if (s && s.code) used[s.code] = true; });
-  Object.keys(D.teams).forEach((u) => {
-    if (!D.assign[u] || (D.secrets[u] && D.secrets[u].code) || issuing[u] || !D.teams[u]?.name) return;
-    let c: string; do { c = String(1000 + Math.floor(Math.random() * 9000)); } while (used[c]);
-    used[c] = true; issuing[u] = true;
-    void store.set('secrets/' + u + '/code', c).then(() => { delete issuing[u]; void log('fac_code', 'Key ' + c, { uid: u, team: D.teams[u]?.name, game: D.assign[u] }); }, () => { delete issuing[u]; });
+/** The games a newly registered team can be dealt (Setup → Games teams can get). Default: the six games for everyone. */
+export const DEFAULT_POOL: string[] = SCENARIOS.filter((s) => s.track === 'core').map((s) => s.id);
+export function poolOf(D: Data): string[] {
+  const p = D.event?.pool;
+  const ids = p ? SCENARIOS.map((s) => s.id).filter((id) => p[id]) : DEFAULT_POOL;
+  return ids.length ? ids : DEFAULT_POOL;
+}
+const hashOf = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+/** Deals each newly registered team a game: random, but balanced, so it's always one of the games with the fewest teams.
+    The pick comes from the team's random id, so two open dashboards make the same choice. */
+function dealGames(D: Data, dealing: Record<string, boolean>) {
+  const pool = poolOf(D), load: Record<string, number> = {};
+  pool.forEach((g) => { load[g] = 0; });
+  teamList(D).forEach((t) => { if (t.game && t.game in load) load[t.game]++; });
+  lobbyTeams(D).forEach((t) => {
+    if (dealing[t.uid]) return;
+    const min = Math.min(...pool.map((g) => load[g]));
+    const ties = pool.filter((g) => load[g] === min);
+    const g = ties[hashOf(t.uid + ':' + min) % ties.length];
+    load[g]++; dealing[t.uid] = true;
+    void getStore().set('assign/' + t.uid, g).then(
+      () => { delete dealing[t.uid]; void log('assign', 'Dealt ' + (gameById(g)?.title || g), { uid: t.uid, team: t.name, game: g }); },
+      () => { delete dealing[t.uid]; });
   });
 }
 function lateLoyals(D: Data) {
@@ -163,17 +167,10 @@ export function assignTeam(D: Data, uid: string, gid: string) {
   void log('assign', gid ? (gameById(gid)?.title || gid) : 'Unassigned', { uid, team: D.teams[uid]?.name, game: gid });
   return true;
 }
-/** Spreads the teams waiting for a game evenly across the chosen games. */
-export function autoAssign(D: Data, gids: string[]): number {
-  if (!gids.length) return 0;
-  const load: Record<string, number> = {};
-  gids.forEach((g) => { load[g] = teamsOf(D, g).length; });
-  let n = 0;
-  lobbyTeams(D).forEach((t) => {
-    const g = gids.slice().sort((a, b) => load[a] - load[b] || gids.indexOf(a) - gids.indexOf(b))[0];
-    load[g]++; assignTeam(D, t.uid, g); n++;
-  });
-  return n;
+export function setPool(gids: string[]) {
+  if (!gids.length) return;
+  void getStore().update('event', { pool: Object.fromEntries(gids.map((g) => [g, true])) });
+  void log('game_mode', 'Games teams can get: ' + gids.map((g) => gameById(g)?.title || g).join(', '));
 }
 export function launch(t: Team) { void getStore().update('control/' + t.uid, { launch: getStore().now() }); void log('fac_launch', '', who(t)); }
 export function startAll(D: Data, gid: string | 'all', now: number): number {
@@ -181,7 +178,7 @@ export function startAll(D: Data, gid: string | 'all', now: number): number {
   teamsOf(D, gid).forEach((t) => { if (resultOf(D, t, now).status === 'waiting') { launch(t); n++; } });
   return n;
 }
-export type TeamCmd = 'launch' | 'pause' | 'adj' | 'hint' | 'help' | 'msg' | 'inject' | 'jump' | 'end' | 'remove' | 'newcode';
+export type TeamCmd = 'launch' | 'pause' | 'adj' | 'msg' | 'inject' | 'jump' | 'end' | 'remove';
 export function teamCmd(D: Data, uid: string, cmd: TeamCmd, arg?: string | number, reason?: string) {
   const store = getStore();
   const t = teamOf(D, uid), c = ctlOf(D, uid), now = store.now();
@@ -199,15 +196,6 @@ export function teamCmd(D: Data, uid: string, cmd: TeamCmd, arg?: string | numbe
       void store.push('control/' + uid + '/adjs', { d, why, at: now });
       void log('fac_adj', (d > 0 ? '+' : '') + d + 's · ' + why + ' (total ' + (a > 0 ? '+' : '') + a + 's)', who(t)); break;
     }
-    case 'hint': void store.update('control/' + uid, { hint: { at: now } }); void log('fac_hint', prog(t).nodeName || '', who(t)); break;
-    case 'help': {
-      // answer an Ask Security request: 'person' (someone goes to the table), 'phone' (hint on their phone) or 'no' (nobody free; lifeline returned)
-      const h = t.help; if (!h) return;
-      const how = arg === 'phone' || arg === 'no' ? arg : 'person';
-      void store.update('control/' + uid, { help: { at: now, req: h.at, node: h.node, how } });
-      void store.remove('teams/' + uid + '/help');
-      void log('fac_help_' + how, h.label || '', who(t)); break;
-    }
     case 'msg': if (!arg) return; void store.update('control/' + uid, { msg: { text: String(arg), at: now } }); void log('fac_msg', String(arg), who(t)); break;
     case 'inject': void store.update('control/' + uid, { inject: { id: String(arg), at: now } }); void log('fac_inject', injectById(String(arg))?.name || '', who(t)); break;
     case 'jump': void store.update('control/' + uid, { jump: { node: String(arg), at: now } }); void log('fac_jump', graph(t.game)[String(arg) as NodeId]?.label || '', who(t)); break;
@@ -216,7 +204,6 @@ export function teamCmd(D: Data, uid: string, cmd: TeamCmd, arg?: string | numbe
       seatsOf(D, uid).forEach((x) => { void store.remove('roles/' + x.uid); });
       ['members', 'insiders', 'teams', 'control', 'secrets', 'assign', 'runs'].forEach((p) => { void store.remove(p + '/' + uid); });
       void log('fac_remove', t.name || '', who(t)); break;
-    case 'newcode': void store.remove('secrets/' + uid); break;
   }
 }
 export function broadcast(D: Data, gid: string, text: string, now: number): number {
@@ -308,9 +295,7 @@ export function describeEvent(gid: string, e: Ev): { step: string; what: string;
       return { step, what: 'Wrong answer', tone: 'bad' };
     }
     case 'sv': return { step, what: 'Solved', tone: 'ok' };
-    case 'ask': return { step, what: e.o === 'phone' ? 'Ask Security team: hint sent to their phone (+30s)' : 'Ask Security team: a security team member helped (+30s)', tone: 'info' };
-    case 'rq': return { step, what: 'Asked for the Security team', tone: 'info' };
-    case 'rqx': return { step, what: e.o === 'declined' ? 'Security team not available: lifeline returned' : 'Withdrew the Security request (solved or moved on)', tone: 'info' };
+    case 'ask': return { step, what: 'Used a hint (+30s)', tone: 'info' };
     case 'ff': return { step, what: 'Used 50:50 (+30s)', tone: 'info' };
     case 'hint': return { step, what: 'Got a hint from the facilitator (+30s)', tone: 'info' };
     case 'dec': {
@@ -375,12 +360,12 @@ function csv(rows: Json[][]) { return rows.map((r) => r.map(csvCell).join(',')).
 const when = (t: number) => (t ? new Date(t).toLocaleString() : '');
 export function resultsCsv(S: Snap, now: number): string {
   const rows: Json[][] = [['Event rank', 'Team', 'Game', 'Round', 'Mode', 'Status', 'Outcome', 'Final time', 'Final seconds', 'Par seconds', 'Score % of par', 'Clock seconds', 'Penalty seconds',
-    'Wrong answers', 'Lifelines', 'Facilitator hints', 'Decision', 'Surprise answers', 'Adjustment seconds', 'Adjustment reasons', 'Flags', 'Started', 'Finished']];
+    'Wrong answers', 'Lifelines', 'Facilitator hints', 'Decision', 'Surprise answers', 'Adjustment seconds', 'Adjustment reasons', 'Flags', 'Registered', 'Started', 'Finished']];
   resultsOf(S, 'all', now).forEach((r, i) => {
     const s = gameById(r.gid), c = ctlOf(S, r.uid), adjs = c.adjs ? Object.values(c.adjs as Record<string, Json>).map((a: Json) => (a.d > 0 ? '+' : '') + a.d + 's ' + a.why).join(' | ') : '';
     rows.push([r.completed ? i + 1 : '', r.name, s?.title || r.gid, s ? (s.track === 'lead' ? 'Leadership' : s.track === 'dev' ? 'Developers' : 'Everyone') : '', r.expert ? 'Expert' : 'Standard', ST_LABEL[r.status] || r.status, r.outcome.label,
       fmt(r.final), r.final, r.par, r.score, r.clock, r.pen, r.T.wrong, r.T.lifelines, r.T.hints, r.T.decQ || '', r.T.inj.map((x) => (injectById(x.id)?.name || x.id) + ': ' + x.q).join(' | '),
-      r.adj, adjs, r.flags.join(' | '), when(r.T.startAt), r.completed || r.status === 'stopped' ? when(r.endAt) : '']);
+      r.adj, adjs, r.flags.join(' | '), when(Number(S.teams?.[r.uid]?.joinedAt) || 0), when(r.T.startAt), r.completed || r.status === 'stopped' ? when(r.endAt) : '']);
   });
   return csv(rows);
 }

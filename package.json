@@ -1,6 +1,6 @@
 {
   "name": "kavach-breach-room",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "description": "Kavach Breach Room: a live, facilitator-run cyber escape game for Cybersecurity Awareness Month.",
   "scripts": {

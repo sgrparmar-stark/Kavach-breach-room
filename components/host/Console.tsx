@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, ChevronRight, Copy, Download, Printer, Shuffle, Play, Archive } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Copy, Download, Printer, Play, Archive } from 'lucide-react';
 import { SCENARIOS, INJECTS } from '@/data/scenarios';
 import { MODES, LOG_TEXT, LOCK_COUNT, TRACKS, fmt, clock, gameById, graph, injectById, lockNumber, type NodeId } from '@/lib/game';
-import { LIMIT_S, DEFAULT_PAR, HINT_S, LIFELINE_S } from '@/lib/scoring';
+import { LIMIT_S, DEFAULT_PAR } from '@/lib/scoring';
 import { getStore, setWriteErrorHandler, lsGet, lsSet, SS } from '@/lib/store';
 import { baseUrl, go, setBaseUrl, playUrl } from '@/lib/nav';
 import { useNow } from '@/lib/hooks';
@@ -13,10 +13,9 @@ import { ReportView } from '@/components/Report';
 import Tree from './Tree';
 import Projector, { Board, type ProjKind } from './Projector';
 import History from './History';
-import HelpDock from './HelpDock';
 import {
   useConsoleData, G, teamList, teamsOf, lobbyTeams, resultOf, resultsOf, counts, ctlOf, seatsOf, logRows, reportOf, parOf, GS_LABEL, ST_LABEL,
-  setRegistration, setGameState, setMode, setInsider, setPar, assignTeam, autoAssign, startAll, teamCmd, broadcast, injectAll, dealTeam, dealRoles,
+  setRegistration, setGameState, setMode, setInsider, setPar, setPool, poolOf, DEFAULT_POOL, assignTeam, startAll, teamCmd, broadcast, injectAll, dealTeam, dealRoles,
   revealInsider, revealAll, newSession, resultsCsv, logCsv, downloadText, copyText, type Data, type Team, type TeamCmd,
 } from './data';
 
@@ -102,7 +101,6 @@ export default function Console({ onSignOut }: { onSignOut: () => void }) {
       </div>
       {team && D.teams[team] ? <Drawer D={D} uid={team} now={now} pickNode={pickNode} setPickNode={setPickNode} confirm={confirm} setConfirm={setConfirm} say={say} onClose={() => { setTeam(null); setPickNode(null); }} /> : null}
       {proj ? <Projector D={D} kind={proj.kind} gid={proj.gid} base={base} onClose={() => setProj(null)} /> : null}
-      <HelpDock D={D} now={now} projecting={!!proj} say={say} openTeam={(u) => { setProj(null); setTeam(u); setPickNode(null); }} />
       <div id="print">
         {base ? (
           <div className="pcard">
@@ -146,7 +144,7 @@ function Overview({ D, now, base, setSel, setProj, confirm, setConfirm, say, ope
             <button type="button" aria-pressed={!reg} onClick={() => setRegistration(false)} data-a="reg" data-v="closed">Closed</button>
             <button type="button" aria-pressed={reg} onClick={() => setRegistration(true)} data-a="reg" data-v="open">Open</button>
           </div>
-          <span className="small">{all.total} registered · {all.lobby} need a game · {all.waiting} ready · {all.playing + all.paused} playing · {all.finished + all.stopped} done</span>
+          <span className="small">{all.total} registered · {all.lobby} getting a game · {all.waiting} ready to start · {all.playing + all.paused} playing · {all.finished + all.stopped} done</span>
         </div>
         <span className="sp" />
         <div className="screens">
@@ -156,11 +154,10 @@ function Overview({ D, now, base, setSel, setProj, confirm, setConfirm, say, ope
           <button className="b2 sm" type="button" onClick={() => setProj({ kind: 'board', gid: 'all' })} data-a="proj-podium">Winners</button>
         </div>
       </div>
-      <LobbyPanel D={D} say={say} openTeam={openTeam} />
+      <ReadyPanel D={D} now={now} say={say} openTeam={openTeam} />
       <div className="toolbar">
         <b>Games</b>
         <span className="sp" />
-        {all.waiting ? <button className="b2 pri" type="button" onClick={() => { const n = startAll(D, 'all', now); say('Launched ' + n + ' team' + (n === 1 ? '' : 's')); }} data-a="startall-all"><Play size={14} aria-hidden /> Launch all ready ({all.waiting})</button> : null}
         {anyPaused ? <button className="b2" type="button" onClick={() => allState('open')}>Resume all</button>
           : all.playing ? <button className="b2" type="button" onClick={() => allState('paused')}>Pause all</button> : null}
         {all.playing + all.paused ? (confirm === 'endall'
@@ -192,43 +189,39 @@ function Overview({ D, now, base, setSel, setProj, confirm, setConfirm, say, ope
   );
 }
 
-/** Teams that registered but don't have a game yet. */
-function LobbyPanel({ D, say, openTeam }: { D: Data; say: (m: string) => void; openTeam: (u: string) => void }) {
-  const list = lobbyTeams(D);
-  const [pick, setPick] = useState<string[]>(() => lsGet<string[]>('kbr-auto') || SCENARIOS.filter((s) => s.track === 'core').map((s) => s.id));
-  const [showAuto, setShowAuto] = useState(false);
-  if (!list.length) return D.event?.reg === 'open' ? <div className="empty slim">Registration is open. Teams appear here as they register; then you give each one a game.</div> : null;
-  const toggle = (id: string) => { const n = pick.includes(id) ? pick.filter((x) => x !== id) : [...pick, id]; setPick(n); lsSet('kbr-auto', n); };
+/** Each team is dealt a game automatically when it registers; here you start them, one by one or all together. */
+function ReadyPanel({ D, now, say, openTeam }: { D: Data; now: number; say: (m: string) => void; openTeam: (u: string) => void }) {
+  const ready = teamsOf(D, 'all').filter((t) => resultOf(D, t, now).status === 'waiting');
+  const dealing = lobbyTeams(D);
+  const pool = poolOf(D);
+  const spread = <p className="small spread">Teams per game: {pool.map((g, i) => <span key={g}>{i ? ' · ' : ''}{gameById(g)?.title} <b>{teamsOf(D, g).length}</b></span>)}</p>;
+  if (!ready.length && !dealing.length) {
+    return D.event?.reg === 'open' ? <div className="empty slim">Registration is open. Each team gets a game automatically when it registers, then appears here for you to start.{teamList(D).length ? spread : null}</div> : null;
+  }
   return (
     <div className="card lobby-card">
       <div className="toolbar" style={{ margin: 0 }}>
-        <b>Waiting for a game ({list.length})</b>
+        <b>Ready to start ({ready.length})</b>
         <span className="sp" />
-        <button className="b2 pri sm" type="button" onClick={() => setShowAuto(!showAuto)} data-a="auto"><Shuffle size={14} aria-hidden /> Auto-assign</button>
+        {ready.length ? <button className="b2 pri sm" type="button" onClick={() => { const n = startAll(D, 'all', now); say('Started ' + n + ' team' + (n === 1 ? '' : 's')); }} data-a="startall-all"><Play size={14} aria-hidden /> Start all ready ({ready.length})</button> : null}
       </div>
-      {showAuto ? (
-        <div className="autobox">
-          <p className="small" style={{ margin: '0 0 6px' }}>Spread these teams evenly across the games you tick:</p>
-          <div className="checks">
-            {SCENARIOS.map((s) => <label key={s.id}><input type="checkbox" checked={pick.includes(s.id)} onChange={() => toggle(s.id)} data-a="autopick" data-v={s.id} /> {s.title}</label>)}
-          </div>
-          <button className="b2 pri sm" type="button" disabled={!pick.length} onClick={() => { const n = autoAssign(D, pick); setShowAuto(false); say(n + ' team' + (n === 1 ? '' : 's') + ' assigned'); }} data-a="autogo">Assign {list.length} team{list.length === 1 ? '' : 's'}</button>
-        </div>
-      ) : null}
       <div className="lobby-rows">
-        {list.map((t) => (
+        {dealing.map((t) => (
           <div key={t.uid} className="lrow">
             <button type="button" className="tn" onClick={() => openTeam(t.uid)} data-a="open" data-v={t.uid}>{t.name}</button>
-            <span className="small">{clock(t.joinedAt || 0)}</span>
+            <span className="small">Getting a game…</span>
+          </div>
+        ))}
+        {ready.map((t) => (
+          <div key={t.uid} className="lrow">
+            <button type="button" className="tn" onClick={() => openTeam(t.uid)} data-a="open" data-v={t.uid}>{t.name}</button>
+            <span className="small">{gameById(t.game)?.title} · registered {clock(t.joinedAt || 0)}</span>
             <span className="sp" />
-            <select className="sel sm" value="" onChange={(ev) => { if (ev.target.value && assignTeam(D, t.uid, ev.target.value)) say(t.name + ' → ' + gameById(ev.target.value)?.title); }} aria-label={'Game for ' + t.name} data-a="assign" data-v={t.uid}>
-              <option value="">Choose a game…</option>
-              {SECTIONS.map((sec) => <optgroup key={sec.track} label={sec.label}>{SCENARIOS.filter((s) => s.track === sec.track).map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}</optgroup>)}
-            </select>
+            <button className="b2 pri sm" type="button" onClick={() => { teamCmd(D, t.uid, 'launch'); say('Started ' + t.name); }} data-a="start" data-v={t.uid}><Play size={14} aria-hidden /> Start</button>
           </div>
         ))}
       </div>
-      <p className="small" style={{ margin: '8px 0 0' }}>Once a team has a game it gets a 4-digit team key. Read it to them, or press Launch.</p>
+      {spread}
     </div>
   );
 }
@@ -256,7 +249,7 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
         </div>
       </div>
       <div className="toolbar">
-        <button className="b2 pri" type="button" disabled={!c.waiting} onClick={() => { const n = startAll(D, gid, now); say(n ? 'Launched ' + n + ' team' + (n === 1 ? '' : 's') : 'No teams are ready'); }} data-a="startall"><Play size={14} aria-hidden /> Launch all ready ({c.waiting})</button>
+        <button className="b2 pri" type="button" disabled={!c.waiting} onClick={() => { const n = startAll(D, gid, now); say(n ? 'Started ' + n + ' team' + (n === 1 ? '' : 's') : 'No teams are ready'); }} data-a="startall"><Play size={14} aria-hidden /> Start all ready ({c.waiting})</button>
         {st === 'paused' ? <button className="b2 good" type="button" onClick={() => setGameState(D, gid, 'open')} data-a="gstate" data-g={gid} data-v="resume">Resume</button>
           : st === 'ended' ? <button className="b2" type="button" onClick={() => setGameState(D, gid, 'open')} data-a="gstate" data-g={gid} data-v="reopen">Reopen</button>
           : <button className="b2" type="button" onClick={() => setGameState(D, gid, 'paused')} data-a="gstate" data-g={gid} data-v="paused">Pause</button>}
@@ -275,10 +268,9 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
             <thead><tr><th>Team</th><th>Status</th><th>Where</th><th>Time</th><th>Wrong</th><th /></tr></thead>
             <tbody>
               {res.map((r) => {
-                const t = D.teams[r.uid] || {}, p = t.prog || {}, code = D.secrets[r.uid]?.code, ctl = ctlOf(D, r.uid);
-                let where: ReactNode = r.status === 'waiting' ? <>Key <span className="code4">{code || '…'}</span></>
+                const t = D.teams[r.uid] || {}, p = t.prog || {}, ctl = ctlOf(D, r.uid);
+                let where: ReactNode = r.status === 'waiting' ? 'Ready to start'
                   : p.pendingInject ? <span className="q-poor">Surprise: {injectById(p.pendingInject)?.name}</span> : <Html html={p.nodeName || ''} />;
-                if (t.help && (r.status === 'playing' || r.status === 'paused')) where = <>{where}<div><span className="helptag">Asked for Security · {fmt(Math.max(0, Math.round((now - t.help.at) / 1000)))}</span></div></>;
                 if (r.status === 'finished' || r.status === 'stopped') where = r.outcome.label;
                 const sn = seatsOf(D, r.uid).length, ins = D.insiders[r.uid];
                 return (
@@ -289,7 +281,7 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
                     <td className="mono">{r.T.startAt ? fmt(r.final) : '—'}</td>
                     <td className="mono">{r.T.wrong}</td>
                     <td><div className="acts end">
-                      {r.status === 'waiting' ? <button className="b2 pri sm" type="button" onClick={() => { teamCmd(D, r.uid, 'launch'); say('Launched ' + r.name); }} data-a="launch">Launch</button>
+                      {r.status === 'waiting' ? <button className="b2 pri sm" type="button" onClick={() => { teamCmd(D, r.uid, 'launch'); say('Started ' + r.name); }} data-a="launch">Start</button>
                         : r.status === 'playing' || r.status === 'paused' ? <button className="b2 sm" type="button" onClick={() => teamCmd(D, r.uid, 'pause')}>{ctl.pause ? 'Resume' : 'Pause'}</button> : null}
                       <button className="b2 sm" type="button" onClick={() => openTeam(r.uid)} data-a="control">Control</button>
                     </div></td>
@@ -325,7 +317,7 @@ function GameView({ D, gid, now, say, setProj, confirm, setConfirm, openTeam, se
               </>
             ) : null}
           </div>
-          <p className="small">{g.insider ? 'Turn on before you assign teams to this game. Teammates scan the code on their team’s phone; deal roles before you launch.' : 'A reserve twist: one teammate secretly works against the team, and teams vote at the end.'}</p>
+          <p className="small">{g.insider ? 'Turn on before you start the teams on this game. Teammates scan the code on their team’s phone; deal roles before you start.' : 'A reserve twist: one teammate secretly works against the team, and teams vote at the end.'}</p>
         </div>
       </details>
     </>
@@ -341,7 +333,7 @@ function Drawer({ D, uid, now, pickNode, setPickNode, confirm, setConfirm, say, 
   const [why, setWhy] = useState('');
   const t: Team = { uid, ...D.teams[uid], game: D.assign[uid] || '' } as Team;
   const r = t.game ? resultOf(D, t, now) : null;
-  const st = r ? r.status : 'lobby', ctl = ctlOf(D, uid), s = gameById(t.game), code = D.secrets[uid]?.code;
+  const st = r ? r.status : 'lobby', ctl = ctlOf(D, uid), s = gameById(t.game);
   const active = st === 'playing' || st === 'paused';
   const cmd = (c: TeamCmd, arg?: string | number, label?: string, reason?: string) => { teamCmd(D, uid, c, arg, reason); setConfirm(null); if (label) say(label); };
   const tl = logRows(D).filter((l) => l.uid === uid).slice(-40).reverse();
@@ -368,35 +360,23 @@ function Drawer({ D, uid, now, pickNode, setPickNode, confirm, setConfirm, say, 
         {!r || st === 'waiting' ? (
           <div className="sec">
             <div className="acts">
-              <span className="lbl">Game</span>
-              <select className="sel sm" value={t.game} onChange={(ev) => { if (assignTeam(D, uid, ev.target.value)) say(ev.target.value ? 'Assigned to ' + gameById(ev.target.value)?.title : 'Moved back to the lobby'); }} data-a="t-assign">
-                <option value="">No game yet</option>
+              <span className="lbl">Change game</span>
+              <select className="sel sm" value={t.game} onChange={(ev) => { if (ev.target.value && assignTeam(D, uid, ev.target.value)) say('Moved to ' + gameById(ev.target.value)?.title); }} data-a="t-assign">
+                {t.game ? null : <option value="">Getting a game…</option>}
                 {SECTIONS.map((sec) => <optgroup key={sec.track} label={sec.label}>{SCENARIOS.filter((x) => x.track === sec.track).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</optgroup>)}
               </select>
             </div>
             {r ? (
               <>
-                <p style={{ margin: '10px 0 8px' }}>Team key <span className="code4">{code || '…'}</span></p>
-                <div className="acts"><button className="b2 pri" type="button" onClick={() => cmd('launch', undefined, 'Launched')} data-a="t-launch">Launch now</button><button className="b2" type="button" onClick={() => cmd('newcode', undefined, 'New key issued')}>New key</button></div>
+                <div className="acts" style={{ marginTop: 10 }}><button className="b2 pri" type="button" onClick={() => cmd('launch', undefined, 'Started')} data-a="t-launch"><Play size={14} aria-hidden /> Start now</button></div>
               </>
             ) : null}
-          </div>
-        ) : null}
-        {active && t.help ? (
-          <div className="sec helpalert inline">
-            <b>Asked for the Security team</b> <span className="small">at {t.help.label} · waiting {fmt(Math.max(0, Math.round((now - t.help.at) / 1000)))}</span>
-            <div className="acts" style={{ marginTop: 8 }}>
-              <button className="b2 sm pri" type="button" onClick={() => cmd('help', 'person', 'Security sent (+' + LIFELINE_S + 's)')} data-a="t-help" data-v="person">Send someone (+{LIFELINE_S}s)</button>
-              <button className="b2 sm" type="button" onClick={() => cmd('help', 'phone', 'Hint sent to their phone (+' + LIFELINE_S + 's)')} data-a="t-help" data-v="phone">Hint to their phone (+{LIFELINE_S}s)</button>
-              <button className="b2 sm" type="button" onClick={() => cmd('help', 'no', 'Lifeline returned')} data-a="t-help" data-v="no">No one free</button>
-            </div>
           </div>
         ) : null}
         {active ? (
           <div className="sec">
             <div className="acts">
               <button className="b2" type="button" onClick={() => cmd('pause', undefined, 'Done')} data-a="t-pause">{ctl.pause ? 'Resume' : 'Pause'}</button>
-              <button className="b2" type="button" onClick={() => cmd('hint', undefined, 'Hint sent (+' + HINT_S + 's)')} data-a="t-hint">Send a hint (+{HINT_S}s)</button>
               {confirm === 'tend:' + uid
                 ? <><button className="b2 warn" type="button" onClick={() => cmd('end', undefined, 'Game ended for that team')} data-a="t-end">Yes, end their game</button><button className="b2" type="button" onClick={() => setConfirm(null)}>Cancel</button></>
                 : <button className="b2 warn" type="button" onClick={() => setConfirm('tend:' + uid)} data-a="t-endq">End their game</button>}
@@ -528,6 +508,34 @@ function LogTab({ D, filter, setFilter }: { D: Data; filter: string; setFilter: 
   );
 }
 
+/** Which games new teams can be dealt. Default: the six games for everyone. */
+function PoolCard({ D, say }: { D: Data; say: (m: string) => void }) {
+  const pool = poolOf(D);
+  const toggle = (id: string) => {
+    const next = pool.includes(id) ? pool.filter((x) => x !== id) : [...pool, id];
+    if (!next.length) { say('Keep at least one game'); return; }
+    setPool(SCENARIOS.map((x) => x.id).filter((x) => next.includes(x)));
+  };
+  const isDefault = pool.length === DEFAULT_POOL.length && DEFAULT_POOL.every((g) => pool.includes(g));
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <h3>Games teams can get</h3>
+      <p className="small">Each team is dealt one of these games when it registers: at random, but spread evenly, so every game gets about the same number of teams. Changes apply to teams that register from now on.</p>
+      {SECTIONS.map((sec) => (
+        <div key={sec.track} className="poolsec">
+          <div className="side-h">{sec.label}</div>
+          <div className="checks">
+            {SCENARIOS.filter((x) => x.track === sec.track).map((x) => (
+              <label key={x.id}><input type="checkbox" checked={pool.includes(x.id)} onChange={() => toggle(x.id)} data-a="pool" data-v={x.id} /> {x.title}</label>
+            ))}
+          </div>
+        </div>
+      ))}
+      {isDefault ? null : <button className="b2 sm" type="button" onClick={() => { setPool(DEFAULT_POOL); say('Back to the six games for everyone'); }} data-a="pool-reset">Back to the six games for everyone</button>}
+    </div>
+  );
+}
+
 function SetupTab({ D, now, base, setBase, setProj, confirm, setConfirm, say }: { D: Data; now: number; base: string; setBase: (b: string) => void; setProj: SetProj; confirm: string | null; setConfirm: (v: string | null) => void; say: (m: string) => void }) {
   const [draft, setDraft] = useState(base);
   const [sname, setSname] = useState('');
@@ -569,6 +577,7 @@ function SetupTab({ D, now, base, setBase, setProj, confirm, setConfirm, say }: 
           </div>
         </div>
       </div>
+      <PoolCard D={D} say={say} />
       <div className="card" style={{ marginTop: 14 }}>
         <h3>Games and par times</h3>
         <p className="small">Par is a typical good time for each game (default {fmt(DEFAULT_PAR)}). Scores compare each team’s final time with its game’s par, so the three winners are fair across games. Every team has {LIMIT_S / 60} minutes of clock time. Set par before the event, and adjust it after a dry run.</p>

@@ -884,40 +884,17 @@ body.lq a{color:var(--brass)}
   .lrow .sel.sm{flex:1 1 100%}
 }
 
-/* ===================== v4.1: Ask Security team ===================== */
-/* host: alert dock, bottom left (clear of the team drawer on a laptop), above the big screen */
-.helpdock{position:fixed;left:16px;bottom:16px;z-index:45;width:min(440px,calc(100% - 32px));max-height:min(70vh,640px);overflow:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:env(safe-area-inset-bottom,0px)}
-.helpalert{background:var(--surface);color:var(--ink);border:1.5px solid var(--alert);border-left-width:6px;border-radius:14px;padding:12px 14px;box-shadow:0 14px 40px rgba(17,20,43,.28);animation:helpin .35s cubic-bezier(.3,1.4,.5,1)}
-@keyframes helpin{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
-.ha-h{display:flex;gap:10px;align-items:flex-start}
-.ha-h svg{flex:none;color:var(--alert);margin-top:2px;animation:pulse 1.4s ease-in-out infinite}
-.ha-t b{display:block;font-family:var(--display);font-size:16px;line-height:1.25}
-.ha-t small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
-.ha-hint{margin:8px 0 2px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:14.5px}
-.ha-hint summary{cursor:pointer;font-weight:600;color:var(--brass);font-size:13.5px}
-.ha-hint p{margin:6px 0 2px}
-.helpalert .acts{margin-top:10px;align-items:center}
-.helpalert .linkish{padding:4px 0;font-size:13.5px}
-.helpdock.compact .helpalert{padding:10px 12px}
-.helpalert.inline{animation:none;box-shadow:none;margin:12px 0}
-.helptag{display:inline-block;margin-top:4px;padding:1px 9px;border-radius:99px;background:var(--alert-soft);color:var(--alert);font-weight:700;font-size:12.5px;animation:pulse 1.6s ease-in-out infinite}
-@media (max-width:480px){.helpdock{left:8px;bottom:8px;width:calc(100% - 16px)}}
-@media print{.helpdock{display:none}}
-/* team: the request card and the "on the way" card */
-.ll.waiting{opacity:1;border-color:var(--alert);background:var(--alert-soft);color:var(--ink);text-decoration:none;cursor:default}
-.ll.waiting svg{animation:spin 2.4s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.helpcard{display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface)}
-.helpcard b{display:block;font-family:var(--display);font-size:17px;margin-bottom:2px}
-.helpcard p{margin:0;font-size:15.5px}
-.hc-ic{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center}
-.helpcard.wait{border-color:var(--alert)}
-.helpcard.wait .hc-ic{background:var(--alert-soft);color:var(--alert)}
-.helpcard.wait .hc-ic svg{animation:spin 2.4s linear infinite}
-.helpcard.person{border-color:var(--safe)}
-.helpcard.person .hc-ic{background:var(--safe-soft);color:var(--safe)}
-body.lq .helpcard{background:var(--glass);-webkit-backdrop-filter:blur(var(--blur));backdrop-filter:blur(var(--blur));box-shadow:inset 0 1px 0 var(--glass-hi),0 10px 30px rgba(0,0,0,.25)}
-body.lq .helpcard.wait{background:linear-gradient(160deg,rgba(255,110,84,.18),rgba(26,31,74,.7) 70%);border-color:rgba(255,110,84,.6)}
-body.lq .helpcard.person{background:linear-gradient(160deg,rgba(98,220,200,.2),rgba(26,31,74,.7) 70%);border-color:rgba(98,220,200,.6)}
-body.lq .ll.waiting{background:rgba(255,110,84,.14);border-color:rgba(255,110,84,.6)}
-@media (prefers-reduced-motion:reduce){.helpalert,.ha-h svg,.helptag,.ll.waiting svg,.helpcard.wait .hc-ic svg{animation:none!important}}
+/* ===================== v4.2: auto-dealt games, team Hint ===================== */
+.status.ready{border-style:solid;border-color:var(--brass-fill);background:var(--brass-soft);color:var(--ink)}
+.status.ready .dot{background:var(--brass-fill)}
+body.lq .status.ready{background:linear-gradient(135deg,rgba(232,178,76,.22),rgba(232,178,76,.06));border-color:rgba(232,178,76,.6)}
+.hintcard{display:flex;gap:10px;align-items:flex-start}
+.hintcard svg{flex:none;color:var(--brass);margin-top:2px}
+.hintcard p{margin:0}
+body.lq .hintcard{border-left:4px solid var(--brass-fill);border-radius:0 14px 14px 0}
+.debrief p b{color:var(--safe)}
+.spread{margin:10px 0 0}
+.spread b{font-family:var(--display);color:var(--ink)}
+.poolsec{margin-top:6px}
+.poolsec .side-h{margin:8px 0 4px}
+

@@ -7,7 +7,7 @@ import {
   type ModeKey, type NodeId, type GameNode, type Outcome,
 } from '@/lib/game';
 import {
-  LIMIT_S, LIFELINE_S, HINT_S, DEC_S, INJ_S, wrongPen, tally, activeMs, clockS, outcomeFrom,
+  LIMIT_S, LIFELINE_S, DEC_S, INJ_S, wrongPen, tally, activeMs, clockS, outcomeFrom,
   type Ev, type EvKind, type Interval, type Tally,
 } from '@/lib/scoring';
 import type { Scenario } from '@/data/scenarios';
@@ -21,16 +21,14 @@ export interface TeamState {
   name: string; registered: boolean; joinedAt: number; gid: string;
   started: boolean; startedAt: number; node: NodeId | null; path: NodeId[]; nodeDone: boolean; cur: Cur;
   ev: Ev[]; pz: Interval[]; pauseStart: number;
-  /** How a lock was helped: 'free' = facilitator hint, 'soc' = Security team hint on the phone, 'person' = someone from Security came over. */
-  hintNodes: Record<string, 'free' | 'soc' | 'person'>; handled: Record<string, number>;
+  /** Locks where the team used its Hint (the hint is shown inside that lock). */
+  hintNodes: Record<string, 'free' | 'soc'>; handled: Record<string, number>;
   pendingInject: string | null; injectChoice: string | null;
   finished: boolean; finishedAt: number; finalBase: number; outcome: Outcome | null; endReason: string;
   msg: { text: string; at: number; seen?: boolean } | null; mode: ModeKey;
   insider: boolean; vote: string; askIt: { node: NodeId; at: number } | null; fiftyUsed: NodeId | null; streak: number; bestStreak: number;
   /** The facilitator archived the session after this team finished: keep showing the result, stop writing. */
   closed?: boolean;
-  /** An open request for the Security team, waiting for the facilitator. */
-  helpReq?: { node: NodeId; at: number } | null;
   /** Last facilitator adjustment and Insider reveal seen, kept for the result screen after the session closes. */
   kept?: { adj: number; reveal: Control['reveal'] | null };
 }
@@ -39,8 +37,6 @@ export interface Control {
   launch?: number; pause?: boolean; adj?: number; msg?: { text: string; at: number }; inject?: { id: string; at: number };
   jump?: { node: NodeId; at: number }; hint?: { at: number }; end?: { at: number };
   reveal?: { at: number; seat: string; correct: boolean; voteSeat: string };
-  /** The facilitator's answer to an Ask Security request: someone sent, a hint to the phone, or no one free. */
-  help?: { at: number; req: number; node: NodeId; how: 'person' | 'phone' | 'no' };
 }
 export interface Flash { kind: 'breach' | 'granted' | 'lifeline'; text: string; at: number }
 
@@ -50,7 +46,7 @@ const fresh = (): TeamState => ({
   started: false, startedAt: 0, node: null, path: [], nodeDone: false, cur: blankCur(),
   ev: [], pz: [], pauseStart: 0, hintNodes: {}, handled: {}, pendingInject: null, injectChoice: null,
   finished: false, finishedAt: 0, finalBase: 0, outcome: null, endReason: '', msg: null, mode: 'std',
-  insider: false, vote: '', askIt: null, fiftyUsed: null, streak: 0, bestStreak: 0, helpReq: null,
+  insider: false, vote: '', askIt: null, fiftyUsed: null, streak: 0, bestStreak: 0,
 });
 
 export class TeamEngine {
@@ -234,24 +230,12 @@ export class TeamEngine {
     this.busy = true;
     const P = this.P;
     P.name = t; P.registered = true; P.joinedAt = this.now();
-    P.handled = { launch: ctl.launch || 0, inject: ctl.inject?.at || 0, jump: ctl.jump?.at || 0, hint: ctl.hint?.at || 0, end: ctl.end?.at || 0, msg: ctl.msg?.at || 0, help: ctl.help?.at || 0 };
+    P.handled = { launch: ctl.launch || 0, inject: ctl.inject?.at || 0, jump: ctl.jump?.at || 0, hint: ctl.hint?.at || 0, end: ctl.end?.at || 0, msg: ctl.msg?.at || 0 };
     this.save(); this.emit();
     this.store.set('teams/' + this.uid, { name: t, joinedAt: P.joinedAt, prog: { status: 'lobby', at: this.now() } }).then(() => {
       this.busy = false; void log('joined', 'Registered', this.who()); this.setFb(); this.emit();
     }, () => {
       this.busy = false; P.registered = false; this.save(); this.setFb('Couldn’t register. Check your connection and try again.', 'bad'); this.emit();
-    });
-  }
-  tryCode(raw: string) {
-    unlockAudio();
-    const c = String(raw).replace(/\D/g, '');
-    if (!this.gid) { this.setFb('Your facilitator hasn’t assigned your game yet.', 'bad'); this.emit(); return; }
-    if (c.length !== 4) { this.setFb('Enter the 4-digit team key from your facilitator.', 'bad'); this.emit(); return; }
-    this.busy = true; this.emit();
-    void this.store.attemptCode(this.uid as string, c).then((ok) => {
-      this.busy = false;
-      if (ok) { void log('code_ok', 'Team key accepted', this.who()); this.startGame(); }
-      else { void log('code_fail', 'Tried ' + c, this.who()); this.setFb('That key isn’t right. Check it with your facilitator.', 'bad'); play('wrong'); this.emit(); }
     });
   }
   private startGame() {
@@ -270,7 +254,6 @@ export class TeamEngine {
   private goTo(nodeId: NodeId) {
     if (nodeId === 'END') { this.finish('complete'); return; }
     const P = this.P;
-    this.withdrawHelp();
     P.node = nodeId; P.path.push(nodeId); P.cur = blankCur(); P.nodeDone = false;
     this.setFb(); this.save(); this.sync(true); this.emit(); this.scrollTop();
   }
@@ -279,7 +262,6 @@ export class TeamEngine {
     if (P.finished || !this.gid) return;
     if (P.pendingInject) { this.rec('ic', '', P.pendingInject); P.pendingInject = null; }
     if (P.pauseStart) { P.pz.push([P.pauseStart, this.now()]); P.pauseStart = 0; }
-    this.withdrawHelp();
     this.rec('end', '', reason);
     if (this.uid) void this.store.set('runs/' + this.uid + '/finishedAt', this.store.ts()).catch(() => undefined);
     P.finished = true; P.finishedAt = this.now(); P.endReason = reason;
@@ -311,7 +293,6 @@ export class TeamEngine {
   private solved() {
     const P = this.P;
     P.nodeDone = true;
-    this.withdrawHelp();
     if (P.cur.wrong === 0) { P.streak++; P.bestStreak = Math.max(P.bestStreak, P.streak); } else P.streak = 0;
     this.rec('sv', P.node || '');
     this.flash = { kind: 'granted', text: P.streak >= 2 ? P.streak + ' in a row' : '', at: Date.now() };
@@ -337,14 +318,8 @@ export class TeamEngine {
         this.save(); this.sync(true);
       }
       if (ctl.jump && ctl.jump.at !== h.jump) { h.jump = ctl.jump.at; this.save(); if (this.G && this.G[ctl.jump.node]) { this.rec('jump', ctl.jump.node); this.goTo(ctl.jump.node); return; } }
-      if (ctl.hint && ctl.hint.at !== h.hint) {
-        h.hint = ctl.hint.at; const n = this.node();
-        if (n && isLockNode(n) && !P.hintNodes[n.id] && !P.nodeDone) { P.hintNodes[n.id] = 'free'; this.rec('hint', n.id); this.pop = { text: '+' + HINT_S + 's', at: Date.now() }; }
-        this.save(); this.sync(true);
-      }
-      if (ctl.help && ctl.help.at !== h.help) { h.help = ctl.help.at; this.onHelp(ctl.help); this.save(); this.sync(true); }
     } else {
-      h.inject = ctl.inject?.at || h.inject; h.jump = ctl.jump?.at || h.jump; h.hint = ctl.hint?.at || h.hint; h.help = ctl.help?.at || h.help; this.save();
+      h.inject = ctl.inject?.at || h.inject; h.jump = ctl.jump?.at || h.jump; this.save();
     }
     this.applyPause(); this.sync(true); this.emit();
   }
@@ -361,50 +336,24 @@ export class TeamEngine {
       const keep = P.name; this.P = fresh(); this.P.name = keep; this.gid = ''; this.S = null; this.G = null; this.save();
       this.setFb('Your facilitator cleared this registration. Register again when registration is open.', 'bad'); this.emit(); this.scrollTop(); return;
     }
-    if (P.registered && rec && rec.codeOk && !P.started && !P.finished && this.gid) { this.startGame(); return; }
     this.emit();
   }
 
   /* ---------- lifelines: each one adds 30 seconds ---------- */
-  /** Ask Security team: the team calls for help, the facilitator sends someone (or a hint to the phone), and only then is it charged. */
-  canAskIt(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.askIt && !this.P.helpReq && !this.P.pendingInject; }
+  /** Hint: shown straight away inside the current lock, +30 seconds, once per game. */
+  canAskIt(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.askIt && !this.P.pendingInject; }
   canFifty(): boolean { const n = this.node(); return !!n && isLockNode(n) && !this.P.nodeDone && !this.P.fiftyUsed && !this.P.pendingInject; }
   askIt() {
-    if (!this.canAskIt() || this.paused() || !this.uid) return;
-    const P = this.P, n = this.node() as GameNode, at = this.now();
-    P.helpReq = { node: n.id, at };
-    this.rec('rq', n.id);
-    void this.store.update('teams/' + this.uid, { help: { node: n.id, at, label: n.label } }).catch(() => undefined);
-    this.setFb();
-    play('lifeline');
-    void log('help', n.label, this.who());
-    this.save(); this.sync(true); this.emit();
-  }
-  /** Cancels an open request once it isn't needed: the lock is solved, the team moves on, or the game ends. Nothing is charged. */
-  private withdrawHelp() {
-    const P = this.P;
-    if (!P.helpReq) return;
-    this.rec('rqx', P.helpReq.node, 'withdrawn');
-    P.helpReq = null;
-    if (this.uid) void this.store.update('teams/' + this.uid, { help: null }).catch(() => undefined);
-    void log('help_withdrawn', '', this.who());
-  }
-  private onHelp(a: NonNullable<Control['help']>) {
-    const P = this.P, req = P.helpReq;
-    if (!req || a.req !== req.at) return; // already withdrawn, or an answer to an older request
-    P.helpReq = null;
-    if (a.how === 'no') {
-      this.rec('rqx', req.node, 'declined');
-      this.setFb('The Security team can’t come right now. Your Ask Security lifeline is back.', '');
-      play('alert');
-      return;
-    }
-    P.askIt = { node: req.node, at: this.now() };
-    P.hintNodes[req.node] = a.how === 'phone' ? 'soc' : 'person';
-    this.rec('ask', req.node, a.how);
-    this.flash = { kind: 'lifeline', text: (a.how === 'phone' ? 'Security team hint' : 'Security is on the way') + ' · +' + LIFELINE_S + ' seconds', at: Date.now() };
+    if (!this.canAskIt() || this.paused()) return;
+    const P = this.P, n = this.node() as GameNode;
+    P.askIt = { node: n.id, at: this.now() };
+    P.hintNodes[n.id] = 'soc';
+    this.rec('ask', n.id);
+    this.flash = { kind: 'lifeline', text: 'Hint · +' + LIFELINE_S + ' seconds', at: Date.now() };
     this.pop = { text: '+' + LIFELINE_S + 's', at: Date.now() };
     play('lifeline');
+    void log('askit', n.label, this.who());
+    this.save(); this.sync(true); this.emit();
   }
   fifty() {
     if (!this.canFifty() || this.paused()) return;

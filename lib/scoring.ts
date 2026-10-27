@@ -3,7 +3,7 @@
 
    Penalties
    - Wrong answer: +20s, +40s, then +60s for each further wrong answer on the same lock (×1.5 in Expert).
-   - Lifeline (Ask Security team or 50:50): +30s each. Ask Security is charged only when the facilitator sends help. A hint sent by the facilitator: +30s.
+   - Lifeline (Hint or 50:50): +30s each, once per game. (Older sessions may also hold facilitator hints: +30s.)
    - Decision: best 0, acceptable +60s, risky +120s (and a detour lock).
    - Surprise event: best 0, OK +30s, poor +90s. The clock pauses while the card is open, for up to 60 seconds.
    Ranking: teams that closed the case first, lowest score; ties go to fewer wrong answers, then fewer lifelines,
@@ -25,7 +25,7 @@ export const FAST_FINISH_S = 5 * 60;
 
 /** go start · ok right tap · x wrong · sv solved · ask/ff lifelines · hint facilitator hint · dec decision
  *  io/ia/ic surprise event opened / answered / closed · jump moved by facilitator · end finished */
-export type EvKind = 'go' | 'ok' | 'x' | 'sv' | 'ask' | 'rq' | 'rqx' | 'ff' | 'hint' | 'dec' | 'io' | 'ia' | 'ic' | 'jump' | 'end';
+export type EvKind = 'go' | 'ok' | 'x' | 'sv' | 'ask' | 'ff' | 'hint' | 'dec' | 'io' | 'ia' | 'ic' | 'jump' | 'end';
 export interface Ev { t: number; k: EvKind; n?: string; o?: string }
 export type Interval = [number, number | null | undefined];
 

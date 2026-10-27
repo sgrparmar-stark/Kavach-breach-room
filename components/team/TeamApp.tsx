@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { LifeBuoy, Scissors, ShieldAlert, ShieldCheck, Users } from 'lucide-react';
+import { Lightbulb, Scissors, ShieldAlert, ShieldCheck, Users } from 'lucide-react';
 import { TeamEngine } from './engine';
 import { LockBody, DecisionBody } from './Locks';
 import { Shield, Html, MuteButton, QRBox, Check } from '@/components/ui';
@@ -103,7 +103,7 @@ function FlashOverlay({ e }: { e: TeamEngine }) {
   return (
     <div key={show.key} className={'flash ' + show.kind} aria-live="assertive">
       <div className="flash-in">
-        {show.kind === 'breach' ? <ShieldAlert size={44} aria-hidden /> : show.kind === 'granted' ? <ShieldCheck size={44} aria-hidden /> : <LifeBuoy size={40} aria-hidden />}
+        {show.kind === 'breach' ? <ShieldAlert size={44} aria-hidden /> : show.kind === 'granted' ? <ShieldCheck size={44} aria-hidden /> : <Lightbulb size={40} aria-hidden />}
         <b>{show.kind === 'breach' ? 'BREACH' : show.kind === 'granted' ? 'UNLOCKED' : 'LIFELINE'}</b>
         {show.text ? <span>{show.text}</span> : null}
       </div>
@@ -115,7 +115,6 @@ function FlashOverlay({ e }: { e: TeamEngine }) {
 function Lobby({ e }: { e: TeamEngine }) {
   const P = e.P;
   const [name, setName] = useState(P.name);
-  const [code, setCode] = useState('');
   const regOpen = e.event.reg === 'open';
   if (!P.registered) {
     return (
@@ -146,7 +145,7 @@ function Lobby({ e }: { e: TeamEngine }) {
         <div className="status open"><span className="dot" />Registered as&nbsp;<strong>{P.name}</strong></div>
         <div className="card wait-card">
           <Users size={22} aria-hidden />
-          <div><b>Your facilitator is assigning games</b><p className="small" style={{ margin: 0 }}>Keep this screen open. Your game appears here, and then you’ll get a 4-digit team key.</p></div>
+          <div><b>Getting your game…</b><p className="small" style={{ margin: 0 }}>Keep this screen open. Your game appears here in a moment.</p></div>
         </div>
         <p className="foot"><button className="linkish" type="button" onClick={() => e.act('leave')} data-a="leave">Not your team? Leave</button></p>
       </section>
@@ -161,7 +160,7 @@ function Lobby({ e }: { e: TeamEngine }) {
       <ul className="rules">
         <li>{LOCK_COUNT} locks and one big decision, within {LIMIT_S / 60} minutes. Lowest time wins.</li>
         <li>Wrong answers add time: +{pen}s, then more for repeat mistakes on the same lock.</li>
-        <li>One <strong>Ask Security team</strong> call (someone from Security comes to help) and one <strong>50:50</strong>. Each adds {LIFELINE_S} seconds. Ask Security is only charged if help comes.</li>
+        <li>One <strong>Hint</strong> and one <strong>50:50</strong> per game. Each adds {LIFELINE_S} seconds.</li>
       </ul>
       {e.insiderOn() ? (
         <div className="card insider-box">
@@ -173,15 +172,9 @@ function Lobby({ e }: { e: TeamEngine }) {
           <p style={{ margin: '8px 0 0' }}><strong>{seats.length}</strong> joined{seats.length ? ': ' + seats.map((x) => x.seat).join(', ') : ''}</p>
         </div>
       ) : null}
-      <form onSubmit={(ev) => { ev.preventDefault(); e.tryCode(code); }} style={{ marginTop: 18 }}>
-        <label className="field" htmlFor="lc">Team key from your facilitator</label>
-        <div className="row" style={{ marginTop: 0 }}>
-          <input id="lc" className="input codein" inputMode="numeric" maxLength={4} autoComplete="off" placeholder="0000" style={{ maxWidth: 160 }} value={code} onChange={(ev) => setCode(ev.target.value)} />
-          <button className="btn btn-primary" type="submit" disabled={e.busy} data-a="code">Start</button>
-        </div>
-        <p className={'fb ' + e.fb.type} role="status">{e.fb.msg}</p>
-      </form>
-      <p className="small">Registered as <strong>{P.name}</strong>. Your game can also start by itself when your facilitator launches it.</p>
+      <div className="status ready" style={{ marginTop: 18 }} data-a="ready"><span className="dot" />Waiting for your facilitator to start the game. Keep this screen open.</div>
+      <p className="small" style={{ marginTop: 10 }}>Registered as <strong>{P.name}</strong>. Your 20-minute clock starts when the game starts.</p>
+      <p className="foot"><button className="linkish" type="button" onClick={() => e.act('leave')} data-a="leave">Not your team? Leave</button></p>
     </section>
   );
 }
@@ -190,12 +183,11 @@ function Lobby({ e }: { e: TeamEngine }) {
 function Lifelines({ e }: { e: TeamEngine }) {
   const P = e.P, n = e.node();
   if (!n || !isLockNode(n) || P.nodeDone) return null;
-  const askUsed = !!P.askIt, waiting = !!P.helpReq, fiftyUsed = !!P.fiftyUsed;
+  const hintUsed = !!P.askIt, fiftyUsed = !!P.fiftyUsed;
   return (
     <div className="lifelines" role="group" aria-label="Lifelines">
-      <button type="button" className={'ll' + (askUsed ? ' used' : '') + (waiting ? ' waiting' : '')} disabled={!e.canAskIt()} onClick={() => e.askIt()} data-a="askit"
-        aria-label={askUsed ? 'Ask Security team, used' : waiting ? 'Security team called, waiting' : 'Ask Security team: someone from Security comes to help, adds 30 seconds if they do'}>
-        <LifeBuoy size={18} aria-hidden /> {waiting ? 'Security called…' : 'Ask Security team'} {waiting ? null : <small>+{LIFELINE_S}s</small>}
+      <button type="button" className={'ll' + (hintUsed ? ' used' : '')} disabled={!e.canAskIt()} onClick={() => e.askIt()} data-a="askit" aria-label={hintUsed ? 'Hint, used' : 'Hint: shows a clue for this lock, adds 30 seconds'}>
+        <Lightbulb size={18} aria-hidden /> Hint <small>+{LIFELINE_S}s</small>
       </button>
       <button type="button" className={'ll' + (fiftyUsed ? ' used' : '')} disabled={!e.canFifty()} onClick={() => e.fifty()} data-a="fifty" aria-label={fiftyUsed ? '50:50, used' : '50:50: ' + fiftyLabel(n) + ', adds 30 seconds'}>
         <Scissors size={18} aria-hidden /> 50:50 <small>+{LIFELINE_S}s</small>
@@ -204,34 +196,10 @@ function Lifelines({ e }: { e: TeamEngine }) {
   );
 }
 
-/** Where an Ask Security request stands: waiting for the facilitator, or someone on the way. */
-function HelpCard({ e }: { e: TeamEngine }) {
-  const P = e.P, n = e.node();
-  if (!n || P.nodeDone) return null;
-  if (P.helpReq && P.helpReq.node === n.id) {
-    return (
-      <div className="helpcard wait" role="status">
-        <span className="hc-ic"><LifeBuoy size={22} aria-hidden /></span>
-        <div><b>Security team called</b><p>Your facilitator is sending someone. Keep working on the lock while you wait. The 30 seconds are only added if help comes.</p></div>
-      </div>
-    );
-  }
-  if (P.hintNodes[n.id] === 'person') {
-    return (
-      <div className="helpcard person" role="status">
-        <span className="hc-ic"><LifeBuoy size={22} aria-hidden /></span>
-        <div><b>Security is on the way</b><p>A member of the Security team is coming to your table. Wave them over and listen to their hint.</p></div>
-      </div>
-    );
-  }
-  return null;
-}
-
-function SocMessage({ hint }: { hint: string }) {
+function HintCard({ hint }: { hint: string }) {
   return (
-    <div className="soc" role="note" aria-label="Hint from the Security team">
-      <div className="soc-av" aria-hidden="true">SEC</div>
-      <div className="soc-body"><p><b>Security team:</b> <Html html={hint} /></p></div>
+    <div className="hint hintcard" role="note" aria-label="Hint">
+      <Lightbulb size={20} aria-hidden /><p><strong>Hint:</strong> <Html html={hint} /></p>
     </div>
   );
 }
@@ -250,8 +218,7 @@ function Play({ e }: { e: TeamEngine }) {
       <>
         <LockBody L={L} e={e} done={P.nodeDone} />
         <p className={'fb ' + e.fb.type} role="status" aria-live="polite">{e.fb.msg}</p>
-        {hk === 'soc' ? <SocMessage hint={L.hint} /> : hk === 'free' ? <div className="hint"><strong>Hint:</strong> <Html html={L.hint} /></div> : null}
-        <HelpCard e={e} />
+        {hk ? <HintCard hint={L.hint} /> : null}
         <Lifelines e={e} />
       </>
     );

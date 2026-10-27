@@ -22,7 +22,7 @@ export default function Landing() {
         <button className="btn btn-primary" type="button" onClick={() => go('/play')} data-a="joinroom"><Users size={18} aria-hidden /> Join as a team</button>
         <div className="card" style={{ marginTop: 32 }}>
           <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MonitorPlay size={20} aria-hidden /> Facilitator</h3>
-          <p className="small" style={{ margin: '4px 0 10px' }}>Run the event: open registration, assign games, launch teams and show the live leaderboard.</p>
+          <p className="small" style={{ margin: '4px 0 10px' }}>Run the event: open registration, start teams and show the live leaderboard.</p>
           <button className="btn btn-quiet btn-sm" type="button" onClick={() => go('/host')} data-a="gohost">Open the host dashboard</button>
         </div>
         {demo ? (

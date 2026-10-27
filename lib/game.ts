@@ -167,9 +167,8 @@ export function readVerifyCode(team: string, code: string): { secs: number; sidx
 /* ---------- activity log labels ---------- */
 export const LOG_TEXT: Record<string, string> = {
   joined: 'Registered', code_ok: 'Launched with code', code_fail: 'Wrong launch code', started: 'Clock started', solved: 'Solved', wrong: 'Wrong answer',
-  askit: 'Lifeline: Ask Security team', help: 'Asked for the Security team', help_withdrawn: 'Security request withdrawn',
-  fac_help_person: 'Security team member sent', fac_help_phone: 'Security hint sent to phone', fac_help_no: 'Security team not available', fifty: 'Lifeline: 50:50', decision: 'Decision', inject_answer: 'Answered surprise event', finished: 'Finished', stopped: 'Stopped',
-  fac_launch: 'Facilitator launched', fac_pause: 'Facilitator paused', fac_resume: 'Facilitator resumed', fac_adj: 'Time adjusted', fac_hint: 'Free hint sent',
+  askit: 'Lifeline: Hint', fifty: 'Lifeline: 50:50', decision: 'Decision', inject_answer: 'Answered surprise event', finished: 'Finished', stopped: 'Stopped',
+  fac_launch: 'Facilitator launched', fac_pause: 'Facilitator paused', fac_resume: 'Facilitator resumed', fac_adj: 'Time adjusted', fac_hint: 'Hint sent by facilitator',
   fac_msg: 'Message sent', fac_inject: 'Surprise event sent', fac_jump: 'Moved in the tree', fac_end: 'Ended by facilitator', fac_remove: 'Removed', fac_code: 'Launch code issued',
   game_state: 'Game state', game_mode: 'Game setting', room: 'Room code', reset: 'Event reset', member_join: 'Teammate joined', roles_dealt: 'Secret roles dealt',
   vote: 'Insider vote', reveal: 'Insider revealed', assign: 'Game assigned', registration: 'Registration', session: 'New session', time: 'Out of time',
